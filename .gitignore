@@ -1,3 +1,4 @@
+data/database-config.json
 data/*.sqlite3
 data/*.log
 data/*.pid

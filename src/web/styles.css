@@ -542,6 +542,25 @@ body[data-theme="dark"] .zju-seal {
   min-height: 0;
 }
 
+#databaseCreatePanel {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+#databaseCreatePanel[hidden] {
+  display: none;
+}
+
+#databaseCreatePanel .editor-actions {
+  margin-top: 0;
+  padding-top: 2px;
+}
+
+#databaseCreatePanel .button-primary {
+  min-width: 132px;
+}
+
 .database-list {
   display: grid;
   gap: 10px;
@@ -2087,6 +2106,11 @@ tbody tr:hover {
 
   .editor-head {
     gap: 10px;
+  }
+
+  #databaseCreatePanel .editor-actions,
+  #databaseCreatePanel .button-primary {
+    width: 100%;
   }
 }
 

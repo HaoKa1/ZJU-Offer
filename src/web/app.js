@@ -338,7 +338,7 @@ function init() {
   renderEditorState();
   startServiceSession();
   void hydrateShortcutsFromServer();
-  void loadAndRender();
+  void loadAndRender({ checkDatabaseOnboarding: true });
   window.setInterval(() => {
     if (!state.editor.isSaving) {
       void loadAndRender();
@@ -974,6 +974,7 @@ function renderDatabaseModal() {
   els.databaseCreateTab.classList.toggle("is-active", state.database.mode === "create");
   els.databaseSwitchPanel.hidden = state.database.mode !== "switch";
   els.databaseCreatePanel.hidden = state.database.mode !== "create";
+  els.databaseStatus.hidden = state.database.mode === "create";
   els.databaseStatus.textContent = state.database.status;
 
   els.databaseList.innerHTML = "";
@@ -1388,17 +1389,23 @@ function renderThemeToggle() {
   els.themeToggle.title = label;
 }
 
-async function loadAndRender(isManual = false) {
+async function loadAndRender(options = false) {
+  const isManual = typeof options === "boolean" ? options : Boolean(options.isManual);
+  const checkDatabaseOnboarding = typeof options === "object" && Boolean(options.checkDatabaseOnboarding);
+
   if (!state.editor.isSaving) {
     setRefreshState(isManual ? "正在刷新" : "同步检查中");
   }
 
   try {
+    if (checkDatabaseOnboarding) {
+      await maybePromptDatabaseOnboarding();
+    }
+
     const payload = await loadPayload();
     updateStateFromPayload(payload);
     renderAll();
     setRefreshState("已同步");
-    await maybePromptDatabaseOnboarding();
   } catch (error) {
     console.error(error);
     const imported = loadImportedData();
@@ -2895,12 +2902,6 @@ function renderEditorState() {
 async function maybePromptDatabaseOnboarding() {
   if (state.hasCheckedDatabaseOnboarding) return;
   state.hasCheckedDatabaseOnboarding = true;
-
-  try {
-    if (localStorage.getItem(DATABASE_ONBOARDING_KEY) === "seen") return;
-  } catch (error) {
-    console.warn("Failed to read database onboarding flag", error);
-  }
 
   try {
     const response = await fetch("./api/databases", { cache: "no-store" });

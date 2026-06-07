@@ -12,7 +12,6 @@ const port = Number(process.env.PORT || 4782);
 const dataDir = path.join(projectRoot, "data");
 const configPath = path.join(dataDir, "database-config.json");
 const shortcutsPath = path.join(dataDir, "shortcuts.json");
-const defaultDbFile = "resume-dashboard.sqlite3";
 const SESSION_TTL_MS = 25000;
 const SHUTDOWN_IDLE_MS = 15000;
 const STARTUP_GRACE_MS = 60000;
@@ -81,11 +80,12 @@ createServer(async (req, res) => {
         return send(res, 204, "text/plain; charset=utf-8", "");
       }
       const currentDbPath = await getCurrentDbPath();
-      return sendJson(res, 200, { ok: true, port, storage: "sqlite", currentDbFile: path.basename(currentDbPath) });
+      return sendJson(res, 200, { ok: true, port, storage: "sqlite", currentDbFile: currentDbPath ? path.basename(currentDbPath) : "" });
     }
 
     if (url.pathname === "/api/data" && req.method === "GET") {
-      const payload = await exportPayload(await getCurrentDbPath());
+      const currentDbPath = await getCurrentDbPath();
+      const payload = currentDbPath ? await exportPayload(currentDbPath) : createEmptyPayload();
       res.setHeader("Cache-Control", "no-store");
       return sendJson(res, 200, payload);
     }
@@ -163,6 +163,10 @@ async function handleSaveRow(req, res) {
   }
 
   const dbPath = await getCurrentDbPath();
+  if (!dbPath) {
+    return sendJson(res, 409, { error: "请先创建数据库，再保存投递信息。" });
+  }
+
   const result = upsertRecord(dbPath, recordId, updates);
   return sendJson(res, 200, {
     ok: true,
@@ -180,6 +184,10 @@ async function handleDeleteRow(req, res) {
   }
 
   const dbPath = await getCurrentDbPath();
+  if (!dbPath) {
+    return sendJson(res, 409, { error: "请先创建数据库，再删除投递信息。" });
+  }
+
   const result = deleteRecord(dbPath, recordId);
   return sendJson(res, 200, {
     ok: true,
@@ -290,11 +298,12 @@ async function handleSessionRelease(req, res) {
 }
 
 async function getDatabaseState() {
-  await ensureCurrentDatabase();
-  const currentDbFile = (await loadDbConfig()).currentDbFile;
+  await mkdir(dataDir, { recursive: true });
+  const configuredDbFile = (await loadDbConfig()).currentDbFile;
   const files = (await readdir(dataDir))
     .filter((name) => name.toLowerCase().endsWith(".sqlite3"))
     .sort((left, right) => left.localeCompare(right, "zh-CN"));
+  const currentDbFile = configuredDbFile && files.includes(configuredDbFile) ? configuredDbFile : "";
 
   const databases = [];
   for (const fileName of files) {
@@ -322,9 +331,7 @@ async function loadDbConfig() {
   await mkdir(dataDir, { recursive: true });
 
   if (!existsSync(configPath)) {
-    const fallback = { currentDbFile: defaultDbFile };
-    await saveDbConfig(fallback);
-    return fallback;
+    return { currentDbFile: "" };
   }
 
   try {
@@ -338,9 +345,7 @@ async function loadDbConfig() {
     // Fall through to regenerate a sane config file.
   }
 
-  const fallback = { currentDbFile: defaultDbFile };
-  await saveDbConfig(fallback);
-  return fallback;
+  return { currentDbFile: "" };
 }
 
 async function saveDbConfig(config) {
@@ -369,17 +374,12 @@ async function saveShortcutConfig(config) {
   await writeFile(shortcutsPath, JSON.stringify(sanitizeShortcutConfig(config), null, 2), "utf8");
 }
 
-async function ensureCurrentDatabase() {
-  const dbPath = await getCurrentDbPath();
-  if (!existsSync(dbPath)) {
-    initDb(dbPath, path.parse(dbPath).name);
-  }
-  return dbPath;
-}
-
 async function getCurrentDbPath() {
   const { currentDbFile } = await loadDbConfig();
-  return resolveDbPath(currentDbFile);
+  if (!currentDbFile) return null;
+
+  const dbPath = resolveDbPath(currentDbFile);
+  return existsSync(dbPath) ? dbPath : null;
 }
 
 function openDb(dbPath) {
@@ -470,6 +470,27 @@ async function exportPayload(dbPath) {
   const payload = exportPayloadFromOpenDb(dbPath, db);
   db.close();
   return payload;
+}
+
+function createEmptyPayload() {
+  return {
+    meta: {
+      sourceLabel: "尚未创建数据库",
+      sourceType: "empty",
+      syncedAt: nowIso(),
+      recordCount: 0,
+      note: "请先创建一个本地 SQLite 数据库，再开始填写投递信息。",
+      inputPath: "",
+      sheetName: "records",
+      editable: false,
+      storage: "sqlite",
+      databaseName: "",
+      databaseFile: "",
+      importedFrom: "",
+      importedAt: ""
+    },
+    rows: []
+  };
 }
 
 function exportPayloadFromOpenDb(dbPath, db) {
