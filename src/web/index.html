@@ -1,0 +1,380 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="./assets/logo.ico">
+  <link rel="shortcut icon" href="./assets/logo.ico">
+  <title>简历投递看板</title>
+  <meta
+    name="description"
+    content="用于管理简历投递进度、流程状态、待办事项和本地数据库写回的看板。"
+  >
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="global-banner">
+    <div class="banner-copy">
+      <p class="eyebrow">Resume Application Board</p>
+      <h2>简历投递看板</h2>
+    </div>
+    <nav class="top-nav" aria-label="页面导航">
+      <a href="#overview" data-view-link="overview">总览</a>
+      <a href="#records" data-view-link="records">投递明细</a>
+      <a href="#guide" data-view-link="guide">使用说明</a>
+      <button id="themeToggle" class="button button-quiet theme-toggle banner-theme-toggle" type="button">主题：自动</button>
+    </nav>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="侧边操作区">
+      <div class="sidebar-card shortcut-panel">
+        <div class="brand-copy">
+          <p class="eyebrow">Recruitment</p>
+          <h1>招聘信息</h1>
+        </div>
+
+        <div class="shortcut-stack recruitment-stack">
+          <a
+            class="shortcut-link zju-link"
+            href="https://www.career.zju.edu.cn/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="打开浙江大学就业指导与服务中心"
+          >
+            <span class="zju-seal" aria-hidden="true">
+              <span class="zju-seal-inner">ZJU</span>
+            </span>
+            <span class="zju-copy">
+              <strong>浙江大学</strong>
+              <span>就业指导与服务中心</span>
+              <small>CAREER DEVELOPMENT CENTER</small>
+            </span>
+          </a>
+
+          <div id="recruitmentShortcutGrid" class="shortcut-grid" aria-label="招聘信息自定义按钮"></div>
+        </div>
+      </div>
+
+      <div class="sidebar-card action-card add-record-card">
+        <button id="addRecordButton" class="button button-primary" type="button">添加投递信息</button>
+      </div>
+
+      <div class="sidebar-card shortcut-panel">
+        <div class="brand-copy">
+          <p class="eyebrow">Tools</p>
+          <h1>实用工具</h1>
+        </div>
+
+        <div class="shortcut-stack">
+          <div id="toolShortcutGrid" class="shortcut-grid" aria-label="实用工具按钮"></div>
+        </div>
+      </div>
+
+      <button id="sourceCardButton" class="sidebar-card source-card source-card-button" type="button">
+        <div class="source-card-header">
+          <p class="eyebrow">Source</p>
+          <h1>数据来源</h1>
+        </div>
+        <div class="meta-pair">
+          <span>数据源</span>
+          <strong id="sourceLabel">加载中</strong>
+        </div>
+        <div class="meta-pair">
+          <span>同步时间</span>
+          <strong id="syncedAtLabel">-</strong>
+        </div>
+        <div class="meta-pair">
+          <span>状态</span>
+          <strong id="refreshStateLabel">等待同步</strong>
+        </div>
+        <p class="source-card-tip">点击管理数据库</p>
+      </button>
+    </aside>
+
+    <div class="workspace">
+      <main>
+        <section id="overviewView" class="page-view" data-view="overview">
+          <section id="statsOverview" class="stats-grid" aria-label="统计总览"></section>
+
+          <section class="split-panels">
+            <article id="pipeline" class="panel equal-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Pipeline</p>
+                  <h3>阶段分布</h3>
+                </div>
+                <p class="panel-note">按当前阶段统计投递进展。</p>
+              </div>
+              <div id="stageBreakdown" class="stage-breakdown panel-scroll"></div>
+            </article>
+
+            <article id="followup" class="panel equal-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Follow-up</p>
+                  <h3>最近待办</h3>
+                </div>
+                <p class="panel-note">优先显示临近节点和需要推进的记录。</p>
+              </div>
+              <div id="todoList" class="list-stack panel-scroll todo-scroll"></div>
+            </article>
+          </section>
+
+          <section class="analysis-grid">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Momentum</p>
+                  <h3>近期更新</h3>
+                </div>
+                <p class="panel-note">按最近动作时间排序。</p>
+              </div>
+              <div id="recentUpdates" class="timeline-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Distribution</p>
+                  <h3>投递结构</h3>
+                </div>
+                <p class="panel-note">多标签会拆分计数，不再合并成一个分类。</p>
+              </div>
+              <div class="distribution-grid">
+                <section>
+                  <h4>领域</h4>
+                  <div id="domainBreakdown" class="mini-breakdown"></div>
+                </section>
+                <section>
+                  <h4>企业性质</h4>
+                  <div id="companyTypeBreakdown" class="mini-breakdown"></div>
+                </section>
+                <section>
+                  <h4>城市</h4>
+                  <div id="cityBreakdown" class="mini-breakdown"></div>
+                </section>
+              </div>
+            </article>
+          </section>
+          <footer class="overview-signature" aria-label="Author info">
+            <span>&copy; 2026 ZJU Offer by Haokai Dai</span>
+          </footer>
+        </section>
+
+        <section id="recordsView" class="page-view" data-view="records" hidden>
+          <section id="records" class="panel records-panel">
+            <div class="panel-head panel-head-column">
+              <div class="records-title">
+                <div class="records-title-main">
+                  <div>
+                    <p class="panel-kicker">Records</p>
+                    <h3>投递明细</h3>
+                  </div>
+                  <div id="tableSummary" class="table-summary"></div>
+                </div>
+              </div>
+
+              <div class="toolbar">
+                <label class="toolbar-field toolbar-search">
+                  <span>搜索</span>
+                  <input id="searchInput" type="search" placeholder="公司 / 岗位 / 备注 / 反馈">
+                </label>
+                <label class="toolbar-field">
+                  <span>阶段</span>
+                  <select id="stageFilter">
+                    <option value="all">全部阶段</option>
+                  </select>
+                </label>
+                <label class="toolbar-field">
+                  <span>方向 / 领域</span>
+                  <select id="domainFilter">
+                    <option value="all">全部方向</option>
+                  </select>
+                </label>
+                <label class="toolbar-field">
+                  <span>企业性质</span>
+                  <select id="companyTypeFilter">
+                    <option value="all">全部性质</option>
+                  </select>
+                </label>
+                <label class="toolbar-field">
+                  <span>城市</span>
+                  <select id="cityFilter">
+                    <option value="all">全部城市</option>
+                  </select>
+                </label>
+                <label class="toolbar-field">
+                  <span>岗位性质</span>
+                  <select id="roleTypeFilter">
+                    <option value="all">全部岗位性质</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead id="tableHead"></thead>
+                <tbody id="tableBody"></tbody>
+              </table>
+              <div id="emptyState" class="empty-state" hidden>
+                <h4>还没有可视化数据</h4>
+                <p>请同步本地数据库，或导入 `.json`、`.csv`、`.tsv`、HTML 表格文件。</p>
+              </div>
+            </div>
+          </section>
+          <footer class="page-signature" aria-label="Author info">
+            <span>&copy; 2026 ZJU Offer by Haokai Dai</span>
+          </footer>
+        </section>
+
+        <section id="guideView" class="page-view guide-view" data-view="guide" hidden>
+          <article class="panel guide-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Guide</p>
+                <h3>使用说明</h3>
+              </div>
+              <p class="panel-note">按实际使用顺序整理，方便第一次打开时快速上手。</p>
+            </div>
+            <div class="guide-grid">
+              <article class="guide-card">
+                <span class="guide-step">01</span>
+                <h4>先选择数据库</h4>
+                <p>点击左侧数据源卡片，可以新建数据库，也可以切换到已有数据库。切换后页面会自动同步当前数据。</p>
+              </article>
+              <article class="guide-card">
+                <span class="guide-step">02</span>
+                <h4>添加投递信息</h4>
+                <p>点击左侧“添加投递信息”，在弹窗中填写公司、岗位、阶段、日期和备注，确认后再保存写入数据库。</p>
+              </article>
+              <article class="guide-card">
+                <span class="guide-step">03</span>
+                <h4>维护快捷入口</h4>
+                <p>招聘信息和实用工具都支持自定义按钮。点击空白加号添加，点击按钮右上角图标可以编辑或删除。</p>
+              </article>
+              <article class="guide-card">
+                <span class="guide-step">04</span>
+                <h4>查看总览与结构</h4>
+                <p>总览页包含阶段分布、最近待办、近期更新和投递结构。点击任意条目可以弹出详情窗口查看对应公司列表。</p>
+              </article>
+              <article class="guide-card">
+                <span class="guide-step">05</span>
+                <h4>筛选投递明细</h4>
+                <p>投递明细页支持按阶段、领域、企业性质、城市和岗位性质筛选，也可以直接搜索公司、岗位和备注内容。</p>
+              </article>
+              <article class="guide-card">
+                <span class="guide-step">06</span>
+                <h4>切换主题</h4>
+                <p>右上角可以手动切换自动、白天和夜晚模式；自动模式会根据当前时间切换背景风格。</p>
+              </article>
+            </div>
+          </article>
+          <footer class="page-signature" aria-label="Author info">
+            <span>&copy; 2026 ZJU Offer by Haokai Dai</span>
+          </footer>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="utilityOverlay" class="editor-overlay" hidden></div>
+  <section id="detailModal" class="editor-modal utility-modal detail-modal" hidden aria-live="polite" aria-modal="true" role="dialog">
+    <div class="editor-head">
+      <div>
+        <p id="detailKicker" class="panel-kicker">Details</p>
+        <h3 id="detailTitle">详细信息</h3>
+      </div>
+      <button id="closeDetailModalButton" class="button button-quiet" type="button">关闭</button>
+    </div>
+    <p id="detailSubtitle" class="editor-hint">查看详细内容。</p>
+    <div id="detailContent" class="detail-content"></div>
+  </section>
+
+  <section id="shortcutModal" class="editor-modal utility-modal" hidden aria-live="polite" aria-modal="true" role="dialog">
+    <div class="editor-head">
+      <div>
+        <p class="panel-kicker">Shortcut</p>
+        <h3 id="shortcutModalTitle">自定义按钮</h3>
+      </div>
+      <button id="closeShortcutModalButton" class="button button-quiet" type="button">关闭</button>
+    </div>
+    <p id="shortcutModalHint" class="editor-hint">设置按钮名称和链接，保存后会显示在对应布局中。</p>
+    <form id="shortcutModalForm" class="editor-form">
+      <div class="editor-fields utility-fields">
+        <label class="editor-field span-2">
+          <span>按钮名称</span>
+          <input id="shortcutModalName" type="text" maxlength="24" placeholder="例如：牛客网">
+        </label>
+        <label class="editor-field span-2">
+          <span>按钮链接</span>
+          <input id="shortcutModalUrl" type="url" placeholder="https://example.com">
+        </label>
+      </div>
+      <div class="editor-actions">
+        <button id="saveShortcutModalButton" class="button button-primary" type="submit">保存按钮</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="databaseModal" class="editor-modal utility-modal" hidden aria-live="polite" aria-modal="true" role="dialog">
+    <div class="editor-head">
+      <div>
+        <p class="panel-kicker">Database</p>
+        <h3>数据库管理</h3>
+      </div>
+      <button id="closeDatabaseModalButton" class="button button-quiet" type="button">关闭</button>
+    </div>
+    <p class="editor-hint">可切换已有数据库，也可新建一个新的数据库文件。</p>
+    <div class="database-tabs" role="tablist" aria-label="数据库操作">
+      <button id="databaseSwitchTab" class="database-tab is-active" type="button" data-mode="switch">切换数据库</button>
+      <button id="databaseCreateTab" class="database-tab" type="button" data-mode="create">新建数据库</button>
+    </div>
+    <div id="databaseSwitchPanel" class="database-panel">
+      <div id="databaseList" class="database-list"></div>
+    </div>
+    <form id="databaseCreatePanel" class="database-panel" hidden>
+      <div class="editor-fields utility-fields">
+        <label class="editor-field span-2">
+          <span>数据库名称</span>
+          <input id="databaseNameInput" type="text" maxlength="40" placeholder="例如：秋招总表">
+        </label>
+      </div>
+      <div class="editor-actions">
+        <button id="createDatabaseButton" class="button button-primary" type="submit">新建并切换</button>
+      </div>
+    </form>
+    <div id="databaseStatus" class="editor-status utility-status">请选择要使用的数据库。</div>
+  </section>
+
+  <div id="editorOverlay" class="editor-overlay" hidden></div>
+  <section id="editorPanel" class="editor-modal" hidden aria-live="polite" aria-modal="true" role="dialog">
+    <div class="editor-head">
+      <div>
+        <p class="panel-kicker">Editor</p>
+        <h3 id="editorTitle">编辑记录</h3>
+      </div>
+      <button id="closeEditorButton" class="button button-quiet" type="button">关闭</button>
+    </div>
+    <p id="editorHint" class="editor-hint" hidden></p>
+    <div id="editorStatus" class="editor-status" hidden></div>
+    <form id="editorForm" class="editor-form">
+      <div id="editorFields" class="editor-fields"></div>
+      <div class="editor-actions">
+        <button id="saveEditorButton" class="button button-primary" type="submit">保存到数据库</button>
+      </div>
+    </form>
+  </section>
+
+  <template id="statCardTemplate">
+    <article class="stat-card">
+      <p class="stat-label"></p>
+      <strong class="stat-value"></strong>
+      <p class="stat-subtext"></p>
+    </article>
+  </template>
+
+  <script src="./app.js" type="module"></script>
+</body>
+</html>

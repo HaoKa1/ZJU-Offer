@@ -1,0 +1,138 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="./assets/logo.ico">
+  <link rel="shortcut icon" href="./assets/logo.ico">
+  <title>Starting Offer Dashboard</title>
+  <style>
+    :root {
+      --ink: #0f417d;
+      --muted: #5c6f8d;
+      --line: rgba(15, 65, 125, 0.12);
+      --bg: linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+      --panel: rgba(255, 255, 255, 0.92);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    .shell {
+      width: min(540px, calc(100vw - 32px));
+      padding: 30px 26px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--panel);
+      box-shadow: 0 18px 44px rgba(15, 65, 125, 0.08);
+      text-align: center;
+    }
+
+    .logo {
+      width: 148px;
+      height: 148px;
+      object-fit: contain;
+      border-radius: 26px;
+      background: #ffffff;
+      padding: 12px;
+      box-shadow: 0 12px 26px rgba(15, 65, 125, 0.08);
+    }
+
+    h1 {
+      margin: 18px 0 10px;
+      font-size: 28px;
+      line-height: 1.15;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .status {
+      margin-top: 18px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .bar {
+      margin: 18px auto 0;
+      width: min(300px, 100%);
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(15, 65, 125, 0.08);
+    }
+
+    .bar::after {
+      content: "";
+      display: block;
+      width: 40%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #0f417d 0%, #2b68b5 100%);
+      animation: slide 1.1s ease-in-out infinite;
+    }
+
+    .hint {
+      margin-top: 18px;
+      font-size: 13px;
+    }
+
+    @keyframes slide {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(320%); }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <img class="logo" src="./assets/logo-square.png" alt="Offer Dashboard Logo">
+    <h1>Offer Dashboard 正在启动</h1>
+    <p>正在准备本地服务，请稍候。第一次启动时可能会稍微慢一点。</p>
+    <div id="status" class="status">正在连接本地服务...</div>
+    <div class="bar" aria-hidden="true"></div>
+    <p class="hint">如果长时间没有跳转，可以稍后手动访问 http://127.0.0.1:4782</p>
+  </main>
+  <script>
+    const statusEl = document.getElementById("status");
+    const healthUrl = "http://127.0.0.1:4782/api/health";
+    const targetUrl = "http://127.0.0.1:4782/";
+    let attempts = 0;
+
+    async function pollHealth() {
+      attempts += 1;
+      try {
+        const response = await fetch(healthUrl, { cache: "no-store" });
+        if (response.ok) {
+          statusEl.textContent = "启动成功，正在进入 Dashboard...";
+          window.location.replace(targetUrl);
+          return;
+        }
+      } catch (error) {
+        // Keep polling until the local service is ready.
+      }
+
+      if (attempts > 40) {
+        statusEl.textContent = "启动时间有点长，仍在继续尝试连接...";
+      }
+      window.setTimeout(pollHealth, 800);
+    }
+
+    pollHealth();
+  </script>
+</body>
+</html>

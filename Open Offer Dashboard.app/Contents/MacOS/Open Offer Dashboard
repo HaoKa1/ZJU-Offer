@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+set -eu
+
+APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
+
+if command -v open >/dev/null 2>&1; then
+  open "$APP_DIR/src/web/launching.html"
+fi
+
+OFFER_DASHBOARD_NO_OPEN=1 sh "$APP_DIR/scripts/unix/launch-dashboard.sh" >/dev/null 2>&1 &
+exit 0
