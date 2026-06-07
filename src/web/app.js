@@ -138,6 +138,7 @@ const FIELD_ALIASES = {
   position: ["方向 / 岗位", "意向岗位", "岗位", "职位", "岗位名称", "position", "role", "job", "title"],
   city: ["岗位城市", "城市", "地点", "工作地点", "location", "city"],
   roleType: ["岗位性质", "职位性质", "job type", "role type"],
+  stage: ["阶段", "状态", "进度", "当前阶段", "stage", "status"],
   deadline: ["投递截止时间", "截止时间", "截止", "deadline", "ddl"],
   link: ["投递链接", "链接", "网址", "url", "link"],
   presentation: ["宣讲会地点", "校内宣讲会", "宣讲会", "talk"],
@@ -193,6 +194,25 @@ const EDITOR_TOGGLE_FIELDS = [
   "__hasInterview3"
 ];
 
+const EDITOR_SUGGESTION_FIELDS = new Set([
+  HEADER.company,
+  HEADER.domain,
+  HEADER.position
+]);
+const EDITOR_SUGGESTION_LIMIT = 8;
+
+const TABLE_COLUMN_WIDTHS = {
+  company: "15%",
+  position: "15%",
+  deadline: "8%",
+  roleType: "8%",
+  stage: "8%",
+  nodeDate: "13%",
+  city: "5%",
+  notes: "22%",
+  actions: "6%"
+};
+
 const els = {
   body: document.body,
   topNavLinks: [...document.querySelectorAll("[data-view-link]")],
@@ -231,6 +251,7 @@ const els = {
   detailContent: document.querySelector("#detailContent"),
   closeDetailModalButton: document.querySelector("#closeDetailModalButton"),
   detailEditButton: null,
+  detailCopyButton: null,
   recruitmentShortcutGrid: document.querySelector("#recruitmentShortcutGrid"),
   toolShortcutGrid: document.querySelector("#toolShortcutGrid"),
   shortcutModal: document.querySelector("#shortcutModal"),
@@ -248,6 +269,10 @@ const els = {
   databaseCreatePanel: document.querySelector("#databaseCreatePanel"),
   databaseList: document.querySelector("#databaseList"),
   databaseNameInput: document.querySelector("#databaseNameInput"),
+  databaseImportInput: document.querySelector("#databaseImportInput"),
+  databaseImportGuideButton: document.querySelector("#databaseImportGuideButton"),
+  importDatabaseButton: document.querySelector("#importDatabaseButton"),
+  createDatabaseButton: document.querySelector("#createDatabaseButton"),
   databaseStatus: document.querySelector("#databaseStatus"),
   statCardTemplate: document.querySelector("#statCardTemplate"),
   editorOverlay: document.querySelector("#editorOverlay"),
@@ -441,6 +466,16 @@ function wireEvents() {
   els.databaseCreatePanel.addEventListener("submit", (event) => {
     event.preventDefault();
     void handleCreateDatabase();
+  });
+  els.importDatabaseButton?.addEventListener("click", () => {
+    void handleImportDatabase();
+  });
+  els.databaseImportGuideButton?.addEventListener("click", () => {
+    closeUtilityModal();
+    window.location.hash = "guide";
+    window.setTimeout(() => {
+      document.querySelector("#importFormatGuide")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 80);
   });
 
   const recordSortSelect = document.querySelector("#recordSortSelect");
@@ -974,8 +1009,14 @@ function renderDatabaseModal() {
   els.databaseCreateTab.classList.toggle("is-active", state.database.mode === "create");
   els.databaseSwitchPanel.hidden = state.database.mode !== "switch";
   els.databaseCreatePanel.hidden = state.database.mode !== "create";
-  els.databaseStatus.hidden = state.database.mode === "create";
+  els.databaseStatus.hidden = state.database.mode === "create" && state.database.status === "请选择要使用的数据库。";
   els.databaseStatus.textContent = state.database.status;
+  if (els.createDatabaseButton) {
+    els.createDatabaseButton.disabled = state.database.isBusy;
+  }
+  if (els.importDatabaseButton) {
+    els.importDatabaseButton.disabled = state.database.isBusy;
+  }
 
   els.databaseList.innerHTML = "";
   if (!state.database.databases.length) {
@@ -1027,6 +1068,17 @@ function setupDetailHeaderActions() {
   const actions = document.createElement("div");
   actions.className = "modal-head-actions";
 
+  const copyButton = document.createElement("button");
+  copyButton.type = "button";
+  copyButton.className = "button";
+  copyButton.textContent = "复制";
+  copyButton.hidden = true;
+  copyButton.addEventListener("click", () => {
+    if (!state.detail.rowId) return;
+    closeUtilityModal();
+    openEditorForCopiedRow(state.detail.rowId);
+  });
+
   const editButton = document.createElement("button");
   editButton.type = "button";
   editButton.className = "button button-primary";
@@ -1038,9 +1090,11 @@ function setupDetailHeaderActions() {
     openEditorForRow(state.detail.rowId);
   });
 
+  actions.appendChild(copyButton);
   actions.appendChild(editButton);
   actions.appendChild(els.closeDetailModalButton);
   head.appendChild(actions);
+  els.detailCopyButton = copyButton;
   els.detailEditButton = editButton;
 }
 
@@ -1086,6 +1140,10 @@ function renderDetailModal() {
   if (els.detailEditButton) {
     els.detailEditButton.hidden = !canEdit;
     els.detailEditButton.disabled = !canEdit;
+  }
+  if (els.detailCopyButton) {
+    els.detailCopyButton.hidden = !canEdit;
+    els.detailCopyButton.disabled = !canEdit;
   }
   els.detailContent.innerHTML = "";
 
@@ -1339,6 +1397,7 @@ async function handleCreateDatabase() {
     return;
   }
 
+  state.database.isBusy = true;
   state.database.status = "正在新建数据库...";
   renderDatabaseModal();
 
@@ -1360,6 +1419,75 @@ async function handleCreateDatabase() {
   } catch (error) {
     console.error(error);
     state.database.status = `新建失败：${error.message}`;
+    renderDatabaseModal();
+  } finally {
+    state.database.isBusy = false;
+    renderDatabaseModal();
+  }
+}
+
+async function handleImportDatabase() {
+  const [file] = els.databaseImportInput?.files || [];
+  if (!file) {
+    state.database.status = "请先选择要导入的 .xlsx、.csv 或 .tsv 文件。";
+    renderDatabaseModal();
+    return;
+  }
+
+  const databaseName = String(els.databaseNameInput.value || "").trim() || stripFileExtension(file.name);
+  if (!databaseName) {
+    state.database.status = "请先填写数据库名称，或选择一个带文件名的导入文件。";
+    renderDatabaseModal();
+    return;
+  }
+
+  state.database.isBusy = true;
+  state.database.status = "正在解析导入文件...";
+  renderDatabaseModal();
+
+  try {
+    const rawRows = await parseDatabaseImportFile(file);
+    const records = mapImportedRowsForDatabase(rawRows);
+    if (!records.length) {
+      throw new Error("没有找到可导入的投递记录，请检查第一行表头和数据内容。");
+    }
+
+    state.database.status = `正在创建数据库并导入 ${records.length} 条记录...`;
+    renderDatabaseModal();
+
+    const createResponse = await fetch("./api/databases/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: databaseName })
+    });
+    const createResult = await createResponse.json();
+    if (!createResponse.ok) throw new Error(createResult.error || "新建数据库失败");
+
+    const importResponse = await fetch("./api/import-rows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceName: file.name, records })
+    });
+    const importResult = await importResponse.json();
+    if (!importResponse.ok) throw new Error(importResult.error || "导入失败");
+
+    state.database.databases = createResult.state?.databases || [];
+    state.database.currentDbFile = createResult.state?.currentDbFile || "";
+    state.database.status = `已导入 ${importResult.importedCount || records.length} 条记录。`;
+    els.databaseNameInput.value = "";
+    els.databaseImportInput.value = "";
+    updateStateFromPayload(importResult.payload);
+    renderAll();
+    setDatabaseMode("switch");
+    await loadDatabases();
+    closeUtilityModal();
+    setRefreshState("已导入");
+  } catch (error) {
+    console.error(error);
+    state.database.status = `导入失败：${error.message}`;
+    renderDatabaseModal();
+  } finally {
+    state.database.isBusy = false;
     renderDatabaseModal();
   }
 }
@@ -1485,6 +1613,7 @@ async function handleFileImport(event) {
 }
 
 function parseImportedText(text, filename = "") {
+  text = String(text || "").replace(/^\uFEFF/, "");
   const lower = filename.toLowerCase();
   if (lower.endsWith(".json")) {
     const parsed = JSON.parse(text);
@@ -1500,6 +1629,184 @@ function parseImportedText(text, filename = "") {
 
   const delimiter = lower.endsWith(".tsv") || (!text.includes(",") && text.includes("\t")) ? "\t" : ",";
   return parseDelimited(text, delimiter);
+}
+
+async function parseDatabaseImportFile(file) {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".xls")) {
+    throw new Error("暂不支持旧版 .xls，请另存为 .xlsx、.csv 或 .tsv 后再导入。");
+  }
+  if (lower.endsWith(".xlsx")) {
+    return parseXlsxRows(await file.arrayBuffer());
+  }
+  return parseImportedText(await file.text(), file.name);
+}
+
+function mapImportedRowsForDatabase(rawRows) {
+  const fieldMap = [
+    ["company", HEADER.company, "text"],
+    ["domain", HEADER.domain, "text"],
+    ["companyType", HEADER.companyType, "companyType"],
+    ["position", HEADER.position, "text"],
+    ["city", HEADER.city, "text"],
+    ["roleType", HEADER.roleType, "text"],
+    ["stage", HEADER.stage, "stage"],
+    ["deadline", HEADER.deadline, "date"],
+    ["link", HEADER.link, "text"],
+    ["presentation", HEADER.presentation, "text"],
+    ["presentationAt", HEADER.presentationAt, "date"],
+    ["presentationApplied", HEADER.presentationApplied, "text"],
+    ["appliedFlag", HEADER.appliedFlag, "text"],
+    ["appliedAt", HEADER.appliedAt, "date"],
+    ["writtenTestAt", HEADER.writtenTestAt, "date"],
+    ["writtenTestResult", HEADER.writtenTestResult, "text"],
+    ["feedback", HEADER.feedback, "text"],
+    ["interview1At", HEADER.interview1At, "date"],
+    ["interview1Result", HEADER.interview1Result, "text"],
+    ["interview2At", HEADER.interview2At, "date"],
+    ["interview2Result", HEADER.interview2Result, "text"],
+    ["interview3At", HEADER.interview3At, "date"],
+    ["interview3Result", HEADER.interview3Result, "text"]
+  ];
+
+  return (rawRows || [])
+    .map((row) => {
+      const record = {};
+      for (const [aliasKey, headerLabel, type] of fieldMap) {
+        const rawValue = pickField(row, FIELD_ALIASES[aliasKey] || [headerLabel]);
+        record[headerLabel] = normalizeImportValue(rawValue, type);
+      }
+      return record;
+    })
+    .filter((record) => Object.values(record).some((value) => String(value || "").trim()));
+}
+
+function normalizeImportValue(value, type) {
+  if (type === "date") return formatImportDateValue(value);
+  if (type === "companyType") return normalizeCompanyTypeValue(value);
+  if (type === "stage") return normalizeStageOption(value) || stringify(value);
+  return stringify(value);
+}
+
+function formatImportDateValue(value) {
+  const text = stringify(value);
+  if (!text) return "";
+  if (/^\d+(\.\d+)?$/.test(text)) {
+    const serial = Number(text);
+    if (serial > 20000 && serial < 80000) {
+      const date = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+      return formatDateInputValue(date);
+    }
+  }
+  return formatDateInputValue(text) || text;
+}
+
+function stripFileExtension(name) {
+  return String(name || "").replace(/\.[^.]+$/, "").trim();
+}
+
+async function parseXlsxRows(arrayBuffer) {
+  const entries = await unzipXlsxEntries(arrayBuffer);
+  const worksheetPath = [...entries.keys()]
+    .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
+    .sort((left, right) => left.localeCompare(right, "en", { numeric: true }))[0];
+  if (!worksheetPath) throw new Error("Excel 文件中没有找到工作表。");
+
+  const sharedStrings = parseXlsxSharedStrings(entries.get("xl/sharedStrings.xml") || "");
+  return parseXlsxWorksheet(entries.get(worksheetPath), sharedStrings);
+}
+
+async function unzipXlsxEntries(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const view = new DataView(arrayBuffer);
+  let eocdOffset = -1;
+  for (let index = bytes.length - 22; index >= 0; index -= 1) {
+    if (view.getUint32(index, true) === 0x06054b50) {
+      eocdOffset = index;
+      break;
+    }
+  }
+  if (eocdOffset < 0) throw new Error("Excel 文件结构不完整。");
+
+  const entryCount = view.getUint16(eocdOffset + 10, true);
+  let directoryOffset = view.getUint32(eocdOffset + 16, true);
+  const entries = new Map();
+  const decoder = new TextDecoder("utf-8");
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (view.getUint32(directoryOffset, true) !== 0x02014b50) break;
+    const compression = view.getUint16(directoryOffset + 10, true);
+    const compressedSize = view.getUint32(directoryOffset + 20, true);
+    const nameLength = view.getUint16(directoryOffset + 28, true);
+    const extraLength = view.getUint16(directoryOffset + 30, true);
+    const commentLength = view.getUint16(directoryOffset + 32, true);
+    const localOffset = view.getUint32(directoryOffset + 42, true);
+    const name = decoder.decode(bytes.slice(directoryOffset + 46, directoryOffset + 46 + nameLength)).replace(/\\/g, "/");
+
+    const localNameLength = view.getUint16(localOffset + 26, true);
+    const localExtraLength = view.getUint16(localOffset + 28, true);
+    const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
+    const compressed = bytes.slice(dataOffset, dataOffset + compressedSize);
+    const contentBytes = compression === 0 ? compressed : await inflateZipEntry(compressed, compression);
+    if (name.endsWith(".xml")) entries.set(name, decoder.decode(contentBytes));
+
+    directoryOffset += 46 + nameLength + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+async function inflateZipEntry(bytes, compression) {
+  if (compression !== 8) throw new Error("Excel 文件包含暂不支持的压缩格式。");
+  if (typeof DecompressionStream !== "function") {
+    throw new Error("当前浏览器不支持 Excel 解压，请改用 CSV 导入。");
+  }
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function parseXlsxSharedStrings(xml) {
+  if (!xml) return [];
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  return [...doc.getElementsByTagName("si")].map((node) => [...node.getElementsByTagName("t")].map((item) => item.textContent || "").join(""));
+}
+
+function parseXlsxWorksheet(xml, sharedStrings) {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const rows = [...doc.getElementsByTagName("row")]
+    .map((row) => parseXlsxRow(row, sharedStrings))
+    .filter((row) => row.some((value) => stringify(value)));
+  if (rows.length <= 1) return [];
+
+  const headers = rows[0].map((value, index) => stringify(value) || `column_${index + 1}`);
+  return rows.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [header, stringify(cells[index])])));
+}
+
+function parseXlsxRow(row, sharedStrings) {
+  const values = [];
+  for (const cell of row.getElementsByTagName("c")) {
+    const ref = cell.getAttribute("r") || "";
+    const columnIndex = xlsxColumnIndex(ref.replace(/\d+/g, ""));
+    values[columnIndex] = parseXlsxCell(cell, sharedStrings);
+  }
+  return values;
+}
+
+function parseXlsxCell(cell, sharedStrings) {
+  const type = cell.getAttribute("t");
+  if (type === "inlineStr") return [...cell.getElementsByTagName("t")].map((node) => node.textContent || "").join("");
+
+  const value = cell.getElementsByTagName("v")[0]?.textContent || "";
+  if (type === "s") return sharedStrings[Number(value)] || "";
+  return value;
+}
+
+function xlsxColumnIndex(letters) {
+  let index = 0;
+  for (const char of String(letters || "A").toUpperCase()) {
+    index = index * 26 + char.charCodeAt(0) - 64;
+  }
+  return Math.max(index - 1, 0);
 }
 
 function parseHtmlTable(html) {
@@ -2413,6 +2720,18 @@ function renderTable() {
     { key: "actions", label: "操作" }
   ];
 
+  const table = els.tableHead.closest("table");
+  if (table) {
+    table.querySelector("colgroup")?.remove();
+    const colgroup = document.createElement("colgroup");
+    for (const column of columns) {
+      const col = document.createElement("col");
+      col.style.width = TABLE_COLUMN_WIDTHS[column.key] || "";
+      colgroup.appendChild(col);
+    }
+    table.insertBefore(colgroup, table.firstChild);
+  }
+
   els.tableHead.innerHTML = `<tr>${columns.map((column) => `<th>${column.label}</th>`).join("")}</tr>`;
   els.tableBody.innerHTML = "";
 
@@ -2431,6 +2750,9 @@ function renderTable() {
     tr.tabIndex = 0;
     tr.setAttribute("role", "button");
     tr.setAttribute("aria-label", `查看 ${row.company || "当前记录"} 详情`);
+    if (row.companyKey) {
+      tr.dataset.companyKey = row.companyKey;
+    }
     tr.addEventListener("click", () => {
       openRowDetailModal(row.id, "投递明细");
     });
@@ -2442,14 +2764,32 @@ function renderTable() {
     });
 
     for (const column of columns) {
+      if (column.key === "company" && sameCompanyAsPrevious) {
+        const mobileCompanyCell = document.createElement("td");
+        mobileCompanyCell.className = "table-company-cell-mobile";
+        mobileCompanyCell.setAttribute("data-label", column.label);
+        const secondary = [...row.domainValues, ...row.companyTypeValues].join(" / ");
+        mobileCompanyCell.innerHTML = `
+          <span class="cell-main">${escapeHtml(row.company || "未命名公司")}</span>
+          ${secondary ? `<span class="cell-sub">${escapeHtml(secondary)}</span>` : ""}
+        `;
+        tr.appendChild(mobileCompanyCell);
+        continue;
+      }
+
       const td = document.createElement("td");
       td.setAttribute("data-label", column.label);
 
       if (column.key === "company") {
         const secondary = [...row.domainValues, ...row.companyTypeValues].join(" / ");
+        const groupSpan = getCompanyGroupSpan(rows, index);
+        if (groupSpan > 1) {
+          td.rowSpan = groupSpan;
+          td.className = "table-company-cell";
+          td.dataset.companyKey = row.companyKey;
+        }
         td.innerHTML = `
           <span class="cell-main">${escapeHtml(row.company || "未命名公司")}</span>
-          ${sameCompanyAsPrevious ? `<span class="cell-sub company-linked-note">同公司其他岗位</span>` : ""}
           ${secondary ? `<span class="cell-sub">${escapeHtml(secondary)}</span>` : ""}
         `;
       } else if (column.key === "position") {
@@ -2503,6 +2843,35 @@ function renderTable() {
     link.addEventListener("click", (event) => {
       event.stopPropagation();
     });
+  });
+
+  els.tableBody.querySelectorAll(".table-company-cell[data-company-key]").forEach((cell) => {
+    cell.addEventListener("mouseenter", () => {
+      setCompanyGroupHover(cell.dataset.companyKey, true);
+    });
+    cell.addEventListener("mouseleave", () => {
+      setCompanyGroupHover(cell.dataset.companyKey, false);
+    });
+  });
+}
+
+function getCompanyGroupSpan(rows, startIndex) {
+  const row = rows[startIndex];
+  if (!row?.companyKey) return 1;
+
+  let span = 1;
+  for (let index = startIndex + 1; index < rows.length; index += 1) {
+    if (rows[index]?.companyKey !== row.companyKey) break;
+    span += 1;
+  }
+  return span;
+}
+
+function setCompanyGroupHover(companyKey, isHovered) {
+  if (!companyKey) return;
+
+  els.tableBody.querySelectorAll(`tr[data-company-key="${cssEscape(companyKey)}"]`).forEach((row) => {
+    row.classList.toggle("table-row-company-hover", isHovered);
   });
 }
 
@@ -2764,6 +3133,27 @@ function openEditorForNewRecord() {
   renderEditorState();
 }
 
+function openEditorForCopiedRow(rowId) {
+  const row = state.normalizedRows.find((item) => item.id === rowId);
+  if (!row) return;
+
+  state.editor = {
+    ...state.editor,
+    isOpen: true,
+    mode: "new",
+    rowId: "",
+    rowNumber: "",
+    sheetName: state.payload.meta?.sheetName || row.sheetName || "",
+    stageHeader: row.stageHeader || "",
+    draft: createDraftFromRow(row),
+    dirty: true,
+    isSaving: false,
+    status: "已复制当前条目，可直接保存为新记录",
+    statusTone: "pending"
+  };
+  renderEditorState();
+}
+
 function renderEditorState() {
   els.editorOverlay.hidden = !state.editor.isOpen;
   els.editorPanel.hidden = !state.editor.isOpen;
@@ -2883,6 +3273,25 @@ function renderEditorState() {
     control.disabled = isFieldDisabled(field);
     if (field.type !== "date") {
       label.appendChild(control);
+      if (EDITOR_SUGGESTION_FIELDS.has(field.key) && control instanceof HTMLInputElement) {
+        const suggestionList = document.createElement("div");
+        suggestionList.className = "editor-suggestion-list";
+        suggestionList.hidden = true;
+        label.appendChild(suggestionList);
+
+        control.setAttribute("autocomplete", "off");
+        control.addEventListener("input", () => {
+          renderEditorSuggestionList(control, suggestionList, field.key);
+        });
+        control.addEventListener("focus", () => {
+          renderEditorSuggestionList(control, suggestionList, field.key);
+        });
+        control.addEventListener("blur", () => {
+          window.setTimeout(() => {
+            suggestionList.hidden = true;
+          }, 120);
+        });
+      }
     } else {
       const trigger = label.querySelector(".editor-date-trigger");
       const shell = label.querySelector(".editor-date-control");
@@ -2897,6 +3306,66 @@ function renderEditorState() {
   if (!toggleRowInserted && toggleRow.childElementCount) {
     els.editorFields.appendChild(toggleRow);
   }
+}
+
+function renderEditorSuggestionList(input, list, fieldKey) {
+  const suggestions = buildEditorSuggestions(fieldKey, input.value);
+  if (!suggestions.length) {
+    list.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+
+  list.innerHTML = "";
+  for (const value of suggestions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "editor-suggestion-option";
+    button.textContent = value;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      input.value = value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      list.hidden = true;
+    });
+    list.appendChild(button);
+  }
+  list.hidden = false;
+}
+
+function buildEditorSuggestions(fieldKey, query = "") {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  if (!shouldShowEditorSuggestions(normalizedQuery)) return [];
+
+  const values = [];
+  for (const row of state.normalizedRows) {
+    if (fieldKey === HEADER.company) {
+      values.push(row.company);
+    } else if (fieldKey === HEADER.domain) {
+      values.push(...row.domainValues, row.domain);
+    } else if (fieldKey === HEADER.position) {
+      values.push(row.position);
+    }
+  }
+
+  const seen = new Set();
+  return values
+    .map((value) => String(value || "").trim())
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (!value || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .filter((value) => value.toLowerCase().includes(normalizedQuery))
+    .sort((left, right) => left.localeCompare(right, "zh-CN"))
+    .slice(0, EDITOR_SUGGESTION_LIMIT);
+}
+
+function shouldShowEditorSuggestions(query) {
+  if (!query) return false;
+  if (/[\u3400-\u9fff]/.test(query)) return query.length >= 1;
+  return query.length >= 2;
 }
 
 async function maybePromptDatabaseOnboarding() {
@@ -3038,6 +3507,8 @@ async function saveEditor() {
   renderEditorState();
 
   try {
+    const editorMode = state.editor.mode;
+    const sourceLabel = state.detail.kicker || "投递明细";
     const response = await fetch("./api/save-row", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3056,11 +3527,15 @@ async function saveEditor() {
     state.editor.mode = "edit";
     state.editor.isSaving = false;
     state.editor.dirty = false;
-    state.editor.status = "已保存到数据库";
-    state.editor.statusTone = "success";
+    state.editor.isOpen = false;
+    state.editor.status = "";
+    state.editor.statusTone = "idle";
     updateStateFromPayload(result.payload);
     renderAll();
     renderEditorState();
+    if (editorMode === "edit") {
+      openRowDetailModal(state.editor.rowId, sourceLabel);
+    }
     setRefreshState("已保存");
   } catch (error) {
     console.error(error);
@@ -3157,3 +3632,7 @@ function escapeAttribute(value) {
   return escapeHtml(value).replaceAll("`", "&#96;");
 }
 
+function cssEscape(value) {
+  if (window.CSS?.escape) return window.CSS.escape(String(value));
+  return String(value).replace(/["\\]/g, "\\$&");
+}

@@ -220,7 +220,7 @@
               </table>
               <div id="emptyState" class="empty-state" hidden>
                 <h4>还没有可视化数据</h4>
-                <p>请同步本地数据库，或导入 `.json`、`.csv`、`.tsv`、HTML 表格文件。</p>
+                <p>请先创建数据库，或在数据库管理中一键导入 .xlsx、.csv、.tsv 文件。</p>
               </div>
             </div>
           </section>
@@ -243,6 +243,11 @@
                 <span class="guide-step">01</span>
                 <h4>先选择数据库</h4>
                 <p>点击左侧数据源卡片，可以新建数据库，也可以切换到已有数据库。切换后页面会自动同步当前数据。</p>
+              </article>
+              <article id="importFormatGuide" class="guide-card">
+                <span class="guide-step">可选</span>
+                <h4>导入 Excel / CSV</h4>
+                <p>在数据库管理的新建数据库页选择 .xlsx、.csv 或 .tsv 文件后点击一键导入。第一行必须是表头，建议至少包含“公司名称”和“方向 / 岗位”。可识别字段包括公司名称、领域、企业性质、方向 / 岗位、城市、岗位性质、阶段、投递截止时间、投递链接、投递时间、笔试时间、笔试结果、面试时间和投递反馈。</p>
               </article>
               <article class="guide-card">
                 <span class="guide-step">02</span>
@@ -340,8 +345,14 @@
           <span>数据库名称</span>
           <input id="databaseNameInput" type="text" maxlength="40" placeholder="例如：秋招总表">
         </label>
+        <label class="editor-field span-2">
+          <span>导入 Excel / CSV</span>
+          <input id="databaseImportInput" type="file" accept=".xlsx,.csv,.tsv,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        </label>
       </div>
       <div class="editor-actions">
+        <button id="databaseImportGuideButton" class="button" type="button">查看格式要求</button>
+        <button id="importDatabaseButton" class="button" type="button">一键导入</button>
         <button id="createDatabaseButton" class="button button-primary" type="submit">新建并切换</button>
       </div>
     </form>
@@ -362,7 +373,7 @@
     <form id="editorForm" class="editor-form">
       <div id="editorFields" class="editor-fields"></div>
       <div class="editor-actions">
-        <button id="saveEditorButton" class="button button-primary" type="submit">保存到数据库</button>
+        <button id="saveEditorButton" class="button button-primary" type="submit">保存</button>
       </div>
     </form>
   </section>

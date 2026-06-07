@@ -553,12 +553,41 @@ body[data-theme="dark"] .zju-seal {
 }
 
 #databaseCreatePanel .editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
   margin-top: 0;
-  padding-top: 2px;
+  padding-top: 8px;
 }
 
 #databaseCreatePanel .button-primary {
   min-width: 132px;
+}
+
+#databaseCreatePanel input[type="file"] {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+#databaseCreatePanel input[type="file"]:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+#databaseCreatePanel input[type="file"]::file-selector-button {
+  min-height: 32px;
+  margin-right: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--ink);
+  background: var(--control-bg);
+  cursor: pointer;
 }
 
 .database-list {
@@ -1415,6 +1444,10 @@ table {
   border-collapse: collapse;
 }
 
+.records-panel table {
+  table-layout: fixed;
+}
+
 thead {
   position: sticky;
   top: 0;
@@ -1436,7 +1469,11 @@ th {
   font-weight: 600;
 }
 
-tbody tr:hover {
+tbody tr:hover td:not(.table-company-cell) {
+  background: color-mix(in srgb, var(--accent) 8%, var(--table-bg));
+}
+
+.table-row-company-hover td {
   background: color-mix(in srgb, var(--accent) 8%, var(--table-bg));
 }
 
@@ -1449,19 +1486,17 @@ tbody tr:hover {
   outline-offset: -2px;
 }
 
-.table-row-company-group {
-  background: color-mix(in srgb, var(--accent) 3%, var(--table-bg));
-}
-
 .table-row-company-start td {
-  border-top: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+  border-top: 1px solid var(--line);
 }
 
-.table-row-company-group td:first-child {
+.table-company-cell {
   position: relative;
+  vertical-align: middle;
+  text-align: center;
 }
 
-.table-row-company-group td:first-child::before {
+.table-company-cell::before {
   content: "";
   position: absolute;
   left: 0;
@@ -1470,6 +1505,10 @@ tbody tr:hover {
   width: 3px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.table-company-cell-mobile {
+  display: none;
 }
 
 .table-actions {
@@ -1488,6 +1527,11 @@ tbody tr:hover {
   min-height: 32px;
   padding: 0 12px;
   font-size: 1rem;
+  white-space: nowrap;
+}
+
+.records-panel td[data-label="备注 / 反馈"] {
+  overflow-wrap: anywhere;
 }
 
 .cell-main {
@@ -1606,10 +1650,49 @@ tbody tr:hover {
 }
 
 .editor-field {
+  position: relative;
   display: grid;
   gap: 6px;
   min-width: 0;
   width: 100%;
+}
+
+.editor-suggestion-list {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-strong);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+}
+
+.editor-suggestion-option {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.editor-suggestion-option:last-child {
+  border-bottom: 0;
+}
+
+.editor-suggestion-option:hover,
+.editor-suggestion-option:focus-visible {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .editor-field.col-3 {
@@ -2076,6 +2159,10 @@ tbody tr:hover {
     gap: 12px;
     padding: 10px 12px;
     overflow-wrap: anywhere;
+  }
+
+  tbody td.table-company-cell-mobile {
+    display: grid;
   }
 
   tbody td::before {

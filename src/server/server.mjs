@@ -126,6 +126,10 @@ createServer(async (req, res) => {
       return handleSaveRow(req, res);
     }
 
+    if (url.pathname === "/api/import-rows" && req.method === "POST") {
+      return handleImportRows(req, res);
+    }
+
     if (url.pathname === "/api/delete-row" && req.method === "POST") {
       return handleDeleteRow(req, res);
     }
@@ -172,6 +176,28 @@ async function handleSaveRow(req, res) {
     ok: true,
     rowNumber: result.rowNumber,
     sheetName: result.sheetName,
+    payload: result.payload
+  });
+}
+
+async function handleImportRows(req, res) {
+  const body = await readJsonBody(req);
+  const records = Array.isArray(body.records) ? body.records : [];
+  const sourceName = stringify(body.sourceName);
+
+  if (!records.length) {
+    return sendJson(res, 400, { error: "没有可导入的记录。" });
+  }
+
+  const dbPath = await getCurrentDbPath();
+  if (!dbPath) {
+    return sendJson(res, 409, { error: "请先创建数据库，再导入投递信息。" });
+  }
+
+  const result = importRecords(dbPath, records, sourceName);
+  return sendJson(res, 200, {
+    ok: true,
+    importedCount: result.importedCount,
     payload: result.payload
   });
 }
@@ -461,7 +487,7 @@ function describeOpenDb(dbPath, db) {
     databaseName: getMeta(db, "database_name", path.parse(dbPath).name) || path.parse(dbPath).name,
     recordCount,
     importedAt: getMeta(db, "last_imported_at"),
-    importedFrom: ""
+    importedFrom: getMeta(db, "last_imported_from")
   };
 }
 
@@ -548,7 +574,7 @@ function exportPayloadFromOpenDb(dbPath, db) {
       storage: "sqlite",
       databaseName,
       databaseFile: path.basename(dbPath),
-      importedFrom: "",
+      importedFrom: getMeta(db, "last_imported_from"),
       importedAt: getMeta(db, "last_imported_at")
     },
     rows: payloadRows
@@ -595,6 +621,43 @@ function upsertRecord(dbPath, recordId, updates) {
   const payload = exportPayloadFromOpenDb(dbPath, db);
   db.close();
   return { rowNumber: rowId, sheetName: "records", payload };
+}
+
+function importRecords(dbPath, records, sourceName = "") {
+  const db = openDb(dbPath);
+  const timestamp = nowIso();
+  const maxSort = db.prepare("SELECT COALESCE(MAX(sort_index), 0) AS sortIndex FROM records").get().sortIndex;
+  const columns = [...FIELDS, "sort_index", "created_at", "updated_at"];
+  const placeholders = columns.map(() => "?").join(", ");
+  const insert = db.prepare(`INSERT INTO records (${columns.join(", ")}) VALUES (${placeholders})`);
+
+  let importedCount = 0;
+  db.exec("BEGIN");
+  try {
+    for (const record of records) {
+      const updates = sanitizeUpdates(record || {});
+      if (!Object.values(updates).some((value) => stringify(value))) continue;
+
+      const values = Object.fromEntries(FIELDS.map((field) => [field, stringify(updates[HEADERS[field]])]));
+      values.stage = normalizeStage(values);
+      importedCount += 1;
+      insert.run(...FIELDS.map((field) => values[field]), maxSort + importedCount, timestamp, timestamp);
+    }
+
+    if (importedCount > 0) {
+      setMeta(db, "last_imported_at", timestamp);
+      setMeta(db, "last_imported_from", sourceName);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    db.close();
+    throw error;
+  }
+
+  const payload = exportPayloadFromOpenDb(dbPath, db);
+  db.close();
+  return { importedCount, payload };
 }
 
 function deleteRecord(dbPath, recordId) {
@@ -728,7 +791,7 @@ async function readJsonBody(req) {
 
   for await (const chunk of req) {
     totalBytes += chunk.length;
-    if (totalBytes > 1024 * 1024) {
+    if (totalBytes > 10 * 1024 * 1024) {
       throw new Error("Request body is too large.");
     }
     chunks.push(chunk);
