@@ -123,8 +123,6 @@ Windows 还可以查看：
 
 不会。这个项目是本地运行、本地存储的。
 
-## GitHub 发布建议
-
 <div align="center">
   <sub>Built for local-first job tracking · ZJU Offer Dashboard</sub>
 </div>
