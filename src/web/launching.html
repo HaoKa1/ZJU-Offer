@@ -111,13 +111,27 @@
     const statusEl = document.getElementById("status");
     const healthUrl = "http://127.0.0.1:4782/api/health";
     const targetUrl = "http://127.0.0.1:4782/";
+    const expectedRoot = new URLSearchParams(window.location.search).get("root") || "";
     let attempts = 0;
+
+    function normalizePath(value) {
+      return String(value || "")
+        .replaceAll("\\", "/")
+        .replace(/\/+$/, "")
+        .toLowerCase();
+    }
 
     async function pollHealth() {
       attempts += 1;
       try {
         const response = await fetch(healthUrl, { cache: "no-store" });
         if (response.ok) {
+          const payload = await response.json();
+          if (expectedRoot && normalizePath(payload.projectRoot) !== normalizePath(expectedRoot)) {
+            statusEl.textContent = "正在切换到当前项目的本地服务...";
+            window.setTimeout(pollHealth, 800);
+            return;
+          }
           statusEl.textContent = "启动成功，正在进入 Dashboard...";
           window.location.replace(targetUrl);
           return;

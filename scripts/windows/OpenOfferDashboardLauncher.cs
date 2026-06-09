@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -42,11 +43,14 @@ internal static class Program
                 throw new FileNotFoundException("Server script was not found.", serverScript);
             }
 
+            OpenLaunchPage(launchPage, root);
+
             string nodeExe = ResolveNodeExe(root);
             Log("Using Node runtime " + nodeExe);
-            if (!IsHealthy())
+            if (!IsHealthy(root))
             {
                 Log("Health check failed, starting local server");
+                StopProcessOnPort(4782);
                 StartServer(root, nodeExe, serverScript);
             }
             else
@@ -54,14 +58,7 @@ internal static class Program
                 Log("Existing local server is already healthy");
             }
 
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = launchPage,
-                UseShellExecute = true
-            });
-            Log("Opened launching page " + launchPage);
-
-            WaitForHealthyServer();
+            WaitForHealthyServer(root);
             Log("Launcher finished");
         }
         catch (Exception ex)
@@ -127,6 +124,18 @@ internal static class Program
         }
 
         throw new FileNotFoundException("node.exe was not found after extracting the Node runtime.", targetDir);
+    }
+
+    private static void OpenLaunchPage(string launchPage, string root)
+    {
+        UriBuilder builder = new UriBuilder(new Uri(launchPage));
+        builder.Query = "root=" + Uri.EscapeDataString(root);
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = builder.Uri.AbsoluteUri,
+            UseShellExecute = true
+        });
+        Log("Opened launching page " + builder.Uri.AbsoluteUri);
     }
 
     private static string FindSystemNode()
@@ -277,7 +286,7 @@ internal static class Program
         Log("Spawned node server process");
     }
 
-    private static bool IsHealthy()
+    private static bool IsHealthy(string root)
     {
         try
         {
@@ -287,7 +296,18 @@ internal static class Program
             using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
             {
                 string cors = response.Headers["Access-Control-Allow-Origin"];
-                return response.StatusCode == HttpStatusCode.OK && cors == "*";
+                if (response.StatusCode != HttpStatusCode.OK || cors != "*")
+                {
+                    return false;
+                }
+
+                using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+                {
+                    string body = reader.ReadToEnd();
+                    string remoteRoot = ExtractJsonString(body, "projectRoot");
+                    return !string.IsNullOrEmpty(remoteRoot)
+                        && NormalizePath(remoteRoot) == NormalizePath(root);
+                }
             }
         }
         catch
@@ -296,11 +316,61 @@ internal static class Program
         }
     }
 
-    private static void WaitForHealthyServer()
+    private static void StopProcessOnPort(int port)
+    {
+        try
+        {
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = "netstat.exe",
+                Arguments = "-ano -p tcp",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            using (Process process = Process.Start(startInfo))
+            {
+                if (process == null)
+                {
+                    return;
+                }
+
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit(5000);
+                foreach (string line in output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (line.IndexOf("LISTENING", StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        continue;
+                    }
+
+                    if (line.IndexOf("127.0.0.1:" + port, StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        continue;
+                    }
+
+                    string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    int pid;
+                    if (parts.Length > 0 && int.TryParse(parts[parts.Length - 1], out pid))
+                    {
+                        Process.GetProcessById(pid).Kill();
+                        Log("Stopped existing process on port " + port + " (PID " + pid + ")");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("Failed to stop process on port " + port + ": " + ex.Message);
+        }
+    }
+
+    private static void WaitForHealthyServer(string root)
     {
         for (int i = 0; i < HealthAttempts; i++)
         {
-            if (IsHealthy())
+            if (IsHealthy(root))
             {
                 Log("Health check passed");
                 return;
@@ -308,6 +378,35 @@ internal static class Program
             Thread.Sleep(HealthDelayMs);
         }
         Log("Health check did not pass within launcher wait window");
+    }
+
+    private static string ExtractJsonString(string json, string propertyName)
+    {
+        Match match = Regex.Match(
+            json,
+            "\"" + Regex.Escape(propertyName) + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\""
+        );
+        if (!match.Success)
+        {
+            return string.Empty;
+        }
+
+        return match.Groups[1].Value
+            .Replace("\\\\", "\\")
+            .Replace("\\/", "/")
+            .Replace("\\\"", "\"");
+    }
+
+    private static string NormalizePath(string pathValue)
+    {
+        try
+        {
+            return Path.GetFullPath(pathValue).TrimEnd('\\', '/').ToLowerInvariant();
+        }
+        catch
+        {
+            return pathValue ?? string.Empty;
+        }
     }
 
     private static void Log(string message)

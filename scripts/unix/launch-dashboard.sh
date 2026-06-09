@@ -62,6 +62,15 @@ find_node_under() {
   return 1
 }
 
+normalize_path() {
+  path_value=$1
+  if [ -d "$path_value" ]; then
+    CDPATH= cd -- "$path_value" 2>/dev/null && pwd
+    return
+  fi
+  printf '%s\n' "$path_value"
+}
+
 download_file() {
   url=$1
   destination=$2
@@ -194,38 +203,58 @@ is_alive() {
 }
 
 is_healthy() {
+  body=""
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSI "$URL/api/health" 2>/dev/null | tr -d '\r' | grep -qi '^Access-Control-Allow-Origin: \*$'
-    return
+    body=$(curl -fsS "$URL/api/health" 2>/dev/null || true)
+  elif command -v wget >/dev/null 2>&1; then
+    body=$(wget -qO- "$URL/api/health" 2>/dev/null || true)
+  else
+    return 1
   fi
 
-  if command -v wget >/dev/null 2>&1; then
-    wget --server-response --spider "$URL/api/health" 2>&1 | tr -d '\r' | grep -qi '^  Access-Control-Allow-Origin: \*$'
-    return
-  fi
-
-  return 1
+  [ -n "$body" ] || return 1
+  remote_root=$(printf '%s' "$body" | sed -n 's/.*"projectRoot"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  [ -n "$remote_root" ] || return 1
+  [ "$(normalize_path "$remote_root")" = "$(normalize_path "$PROJECT_ROOT")" ]
 }
 
-open_browser() {
+stop_port_process() {
+  port=$1
+  pid=""
+  if command -v lsof >/dev/null 2>&1; then
+    pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -n 1 || true)
+  elif command -v fuser >/dev/null 2>&1; then
+    pid=$(fuser "$port"/tcp 2>/dev/null | awk '{print $1}' | head -n 1 || true)
+  fi
+
+  if [ -n "$pid" ]; then
+    kill "$pid" 2>/dev/null || true
+  fi
+}
+
+open_launching_page() {
   if [ "${OFFER_DASHBOARD_NO_OPEN:-0}" = "1" ]; then
     return
   fi
 
+  launch_page="$PROJECT_ROOT/src/web/launching.html?root=$PROJECT_ROOT"
   if command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$URL" >/dev/null 2>&1 &
+    xdg-open "$launch_page" >/dev/null 2>&1 &
   elif command -v open >/dev/null 2>&1; then
-    open "$URL" >/dev/null 2>&1 &
+    open "$launch_page" >/dev/null 2>&1 &
   else
     printf 'Dashboard is running at %s\n' "$URL"
   fi
 }
 
-NODE_EXE=$(resolve_node)
 mkdir -p "$DATA_DIR"
 mkdir -p "$DOWNLOADS_DIR"
+open_launching_page
+
+NODE_EXE=$(resolve_node)
 
 if ! is_alive || ! is_healthy; then
+  stop_port_process "$PORT"
   NODE_NO_WARNINGS=1 PORT="$PORT" "$NODE_EXE" "$SERVER_SCRIPT" > "$DATA_DIR/server.out.log" 2> "$DATA_DIR/server.err.log" &
   printf '%s\n' "$!" > "$PID_FILE"
 fi
@@ -239,4 +268,6 @@ while [ "$attempt" -lt 30 ]; do
   sleep 0.25
 done
 
-open_browser
+if ! is_healthy; then
+  printf 'Dashboard server is still starting. Keep the launching page open.\n'
+fi

@@ -4,6 +4,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ScriptsRoot = Split-Path -Parent $ScriptDir
 $ProjectRoot = Split-Path -Parent $ScriptsRoot
 $ServerScriptPath = Join-Path $ProjectRoot "src\server\server.mjs"
+$LaunchPagePath = Join-Path $ProjectRoot "src\web\launching.html"
 $Url = "http://127.0.0.1:4782"
 $DataDir = Join-Path $ProjectRoot "data"
 $ServerPidPath = Join-Path $DataDir "dashboard-server.pid"
@@ -18,6 +19,20 @@ function Write-LauncherLog {
   param([string]$Message)
   $Stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
   Add-Content -LiteralPath $LauncherLogPath -Value "[$Stamp] $Message" -Encoding UTF8
+}
+
+function Normalize-PathForCompare {
+  param([string]$PathValue)
+
+  if (-not $PathValue) {
+    return ""
+  }
+
+  try {
+    return [System.IO.Path]::GetFullPath($PathValue).TrimEnd("\", "/").ToLowerInvariant()
+  } catch {
+    return [string]$PathValue
+  }
 }
 
 function Get-WindowsRuntimeKey {
@@ -212,7 +227,14 @@ function Test-DashboardHealth {
   try {
     $Response = Invoke-WebRequest -Uri "$Url/api/health" -UseBasicParsing -TimeoutSec 2
     $CorsReady = $Response.Headers["Access-Control-Allow-Origin"] -eq "*"
-    return $Response.StatusCode -eq 200 -and $CorsReady
+    if (-not ($Response.StatusCode -eq 200 -and $CorsReady)) {
+      return $false
+    }
+
+    $Payload = $Response.Content | ConvertFrom-Json
+    $RemoteRoot = Normalize-PathForCompare -PathValue $Payload.projectRoot
+    $LocalRoot = Normalize-PathForCompare -PathValue $ProjectRoot
+    return $RemoteRoot -and $RemoteRoot -eq $LocalRoot
   } catch {
     return $false
   }
@@ -242,7 +264,7 @@ function Test-DashboardBuild {
     }
 
     $Payload = $DataResponse.Content | ConvertFrom-Json
-    return $Payload -and $Payload.meta -and $Payload.rows -ne $null
+    return $null -ne $Payload -and $null -ne $Payload.meta -and $null -ne $Payload.rows
   } catch {
     return $false
   }
@@ -295,20 +317,24 @@ function Start-DashboardServer {
   Write-LauncherLog "Started dashboard server with PID $($Process.Id) using $NodeExe"
 }
 
-function Open-DashboardBrowser {
+function Open-LaunchingPage {
   if ($env:OFFER_DASHBOARD_NO_OPEN -eq "1") {
     Write-LauncherLog "Skipping browser launch because OFFER_DASHBOARD_NO_OPEN=1"
     return
   }
 
-  Write-LauncherLog "Opening $Url"
-  Start-Process $Url
+  $LaunchUri = [System.Uri]::new($LaunchPagePath).AbsoluteUri
+  $RootQuery = [System.Uri]::EscapeDataString($ProjectRoot)
+  $LaunchUrl = "${LaunchUri}?root=${RootQuery}"
+  Write-LauncherLog "Opening $LaunchUrl"
+  Start-Process $LaunchUrl
 }
 
 try {
   New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
   New-Item -ItemType Directory -Path $RuntimeDownloadsDir -Force | Out-Null
   Write-LauncherLog "Launcher started from $ProjectRoot"
+  Open-LaunchingPage
   $NodeExe = Resolve-NodeExe
   Write-LauncherLog "Using Node runtime $NodeExe"
 
@@ -329,10 +355,10 @@ try {
   }
 
   if (-not $IsReady) {
-    throw "Dashboard server did not become ready within the expected time. Check $LauncherLogPath."
+    Write-LauncherLog "Dashboard server is still starting; leaving launching page open for continued polling."
+    return
   }
 
-  Open-DashboardBrowser
 } catch {
   Write-LauncherLog "Launcher failed: $($_.Exception.Message)"
   Add-Type -AssemblyName System.Windows.Forms

@@ -3,7 +3,7 @@ Version=1.0
 Type=Application
 Name=Open Offer Dashboard
 Comment=Launch Offer Dashboard
-Exec=sh -c 'cd "$(dirname "%k")" && xdg-open "./src/web/launching.html" >/dev/null 2>&1 & OFFER_DASHBOARD_NO_OPEN=1 sh "./scripts/unix/launch-dashboard.sh" >/dev/null 2>&1 &'
+Exec=sh -c 'cd "$(dirname "%k")" && sh "./scripts/unix/launch-dashboard.sh" >/dev/null 2>&1 &'
 Icon=assets/logo-square.png
 Terminal=false
 Categories=Office;Utility;

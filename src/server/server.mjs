@@ -82,7 +82,13 @@ createServer(async (req, res) => {
         return send(res, 204, "text/plain; charset=utf-8", "");
       }
       const currentDbPath = await getCurrentDbPath();
-      return sendJson(res, 200, { ok: true, port, storage: "sqlite", currentDbFile: currentDbPath ? path.basename(currentDbPath) : "" });
+      return sendJson(res, 200, {
+        ok: true,
+        port,
+        storage: "sqlite",
+        projectRoot,
+        currentDbFile: currentDbPath ? path.basename(currentDbPath) : ""
+      });
     }
 
     if (url.pathname === "/api/data" && req.method === "GET") {
