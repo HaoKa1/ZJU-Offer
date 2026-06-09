@@ -324,24 +324,23 @@ function Open-LaunchingPage {
     return
   }
 
-  $LaunchUri = [System.Uri]::new($LaunchPagePath).AbsoluteUri
-  $RootQuery = [System.Uri]::EscapeDataString($ProjectRoot)
-  $LaunchUrl = "${LaunchUri}?root=${RootQuery}"
-  Write-LauncherLog "Opening $LaunchUrl"
-  Start-Process $LaunchUrl
+  Write-LauncherLog "Opening $LaunchPagePath"
+  Start-Process $LaunchPagePath
 }
 
 try {
   New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
   New-Item -ItemType Directory -Path $RuntimeDownloadsDir -Force | Out-Null
   Write-LauncherLog "Launcher started from $ProjectRoot"
+  if (-not (Test-DashboardHealth)) {
+    Stop-PortProcess -LocalPort $Port
+  }
   Open-LaunchingPage
   $NodeExe = Resolve-NodeExe
   Write-LauncherLog "Using Node runtime $NodeExe"
 
   if (-not (Test-ProcessAlive -PidPath $ServerPidPath) -or -not (Test-DashboardHealth) -or -not (Test-DashboardBuild)) {
     Write-LauncherLog "Restarting dashboard server on port $Port"
-    Stop-PortProcess -LocalPort $Port
     Start-Sleep -Milliseconds 300
     Start-DashboardServer
   }

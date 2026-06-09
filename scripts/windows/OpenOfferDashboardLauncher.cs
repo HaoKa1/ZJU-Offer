@@ -43,14 +43,19 @@ internal static class Program
                 throw new FileNotFoundException("Server script was not found.", serverScript);
             }
 
-            OpenLaunchPage(launchPage, root);
+            bool hasCurrentServer = IsHealthy(root);
+            if (!hasCurrentServer)
+            {
+                StopProcessOnPort(4782);
+            }
+
+            OpenLaunchPage(launchPage);
 
             string nodeExe = ResolveNodeExe(root);
             Log("Using Node runtime " + nodeExe);
-            if (!IsHealthy(root))
+            if (!hasCurrentServer && !IsHealthy(root))
             {
                 Log("Health check failed, starting local server");
-                StopProcessOnPort(4782);
                 StartServer(root, nodeExe, serverScript);
             }
             else
@@ -126,15 +131,14 @@ internal static class Program
         throw new FileNotFoundException("node.exe was not found after extracting the Node runtime.", targetDir);
     }
 
-    private static void OpenLaunchPage(string launchPage, string root)
+    private static void OpenLaunchPage(string launchPage)
     {
-        string launchUrl = new Uri(launchPage).AbsoluteUri + "?root=" + Uri.EscapeDataString(root);
         Process.Start(new ProcessStartInfo
         {
-            FileName = launchUrl,
+            FileName = launchPage,
             UseShellExecute = true
         });
-        Log("Opened launching page " + launchUrl);
+        Log("Opened launching page " + launchPage);
     }
 
     private static string FindSystemNode()
