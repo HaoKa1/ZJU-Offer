@@ -128,14 +128,13 @@ internal static class Program
 
     private static void OpenLaunchPage(string launchPage, string root)
     {
-        UriBuilder builder = new UriBuilder(new Uri(launchPage));
-        builder.Query = "root=" + Uri.EscapeDataString(root);
+        string launchUrl = new Uri(launchPage).AbsoluteUri + "?root=" + Uri.EscapeDataString(root);
         Process.Start(new ProcessStartInfo
         {
-            FileName = builder.Uri.AbsoluteUri,
+            FileName = launchUrl,
             UseShellExecute = true
         });
-        Log("Opened launching page " + builder.Uri.AbsoluteUri);
+        Log("Opened launching page " + launchUrl);
     }
 
     private static string FindSystemNode()
