@@ -255,7 +255,7 @@ NODE_EXE=$(resolve_node)
 
 if ! is_alive || ! is_healthy; then
   stop_port_process "$PORT"
-  NODE_NO_WARNINGS=1 PORT="$PORT" "$NODE_EXE" "$SERVER_SCRIPT" > "$DATA_DIR/server.out.log" 2> "$DATA_DIR/server.err.log" &
+  NODE_NO_WARNINGS=1 OFFER_DASHBOARD_AUTO_SHUTDOWN=1 PORT="$PORT" "$NODE_EXE" "$SERVER_SCRIPT" > "$DATA_DIR/server.out.log" 2> "$DATA_DIR/server.err.log" &
   printf '%s\n' "$!" > "$PID_FILE"
 fi
 

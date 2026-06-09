@@ -305,8 +305,9 @@ function Start-DashboardServer {
   $StartInfo.FileName = $NodeExe
   $StartInfo.Arguments = "`"$ServerScriptPath`""
   $StartInfo.WorkingDirectory = $ProjectRoot
-  $StartInfo.UseShellExecute = $true
-  $StartInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+  $StartInfo.UseShellExecute = $false
+  $StartInfo.CreateNoWindow = $true
+  $StartInfo.EnvironmentVariables["OFFER_DASHBOARD_AUTO_SHUTDOWN"] = "1"
 
   $Process = [System.Diagnostics.Process]::Start($StartInfo)
   if (-not $Process) {

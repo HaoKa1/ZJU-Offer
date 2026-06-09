@@ -275,14 +275,16 @@ internal static class Program
 
     private static void StartServer(string root, string nodeExe, string serverScript)
     {
-        Process.Start(new ProcessStartInfo
+        ProcessStartInfo startInfo = new ProcessStartInfo
         {
             FileName = nodeExe,
             Arguments = "\"" + serverScript + "\"",
             WorkingDirectory = root,
-            UseShellExecute = true,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.EnvironmentVariables["OFFER_DASHBOARD_AUTO_SHUTDOWN"] = "1";
+        Process.Start(startInfo);
         Log("Spawned node server process");
     }
 
