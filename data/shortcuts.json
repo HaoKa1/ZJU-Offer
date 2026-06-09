@@ -7,9 +7,7 @@
     {
       "label": "智联招聘",
       "url": "https://www.zhaopin.com/"
-    }
-  ],
-  "tools": [
+    },
     {
       "label": "超级简历",
       "url": "https://www.wondercv.com/jianlimoban/"
@@ -18,5 +16,6 @@
       "label": "AI中转订阅",
       "url": "https://cdk.aixhan.com/?aff=af_40c9715138ab"
     }
-  ]
+  ],
+  "tools": []
 }

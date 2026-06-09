@@ -397,6 +397,11 @@ body[data-theme="dark"] .zju-seal {
   background: var(--control-hover);
 }
 
+.shortcut-tool-button {
+  width: 100%;
+  cursor: pointer;
+}
+
 .shortcut-add-tile {
   min-height: 54px;
   font-size: 1.35rem;
@@ -565,7 +570,8 @@ body[data-theme="dark"] .zju-seal {
   min-width: 132px;
 }
 
-#databaseCreatePanel input[type="file"] {
+#databaseCreatePanel input[type="file"],
+#resumeManagerForm input[type="file"] {
   min-height: auto;
   padding: 0;
   border: 0;
@@ -574,12 +580,14 @@ body[data-theme="dark"] .zju-seal {
   color: var(--ink);
 }
 
-#databaseCreatePanel input[type="file"]:focus {
+#databaseCreatePanel input[type="file"]:focus,
+#resumeManagerForm input[type="file"]:focus {
   border-color: transparent;
   box-shadow: none;
 }
 
-#databaseCreatePanel input[type="file"]::file-selector-button {
+#databaseCreatePanel input[type="file"]::file-selector-button,
+#resumeManagerForm input[type="file"]::file-selector-button {
   min-height: 32px;
   margin-right: 10px;
   padding: 0 12px;
@@ -588,6 +596,70 @@ body[data-theme="dark"] .zju-seal {
   color: var(--ink);
   background: var(--control-bg);
   cursor: pointer;
+}
+
+.manager-fields {
+  gap: 12px;
+}
+
+.manager-list {
+  display: grid;
+  gap: 10px;
+  max-height: 36vh;
+  overflow: auto;
+  padding-right: 8px;
+  scrollbar-gutter: stable;
+}
+
+.manager-empty,
+.manager-item {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--control-bg);
+}
+
+.manager-empty {
+  padding: 14px;
+  color: var(--muted);
+}
+
+.manager-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+
+.manager-item-main {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.manager-item-main strong,
+.manager-item-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-item-main span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.manager-item-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .database-list {
@@ -996,6 +1068,7 @@ body[data-view="guide"] #guideView {
 .mini-breakdown-list::-webkit-scrollbar,
 .table-wrap::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
 .todo-scroll::-webkit-scrollbar-thumb,
@@ -1034,7 +1107,7 @@ body[data-view="guide"] #guideView {
 }
 
 #recentUpdates .timeline-item {
-  min-height: 102px;
+  min-height: 100px;
   height: auto;
 }
 
@@ -1239,12 +1312,21 @@ body[data-view="guide"] #guideView {
 
 .mini-breakdown-list {
   display: grid;
+  align-content: start;
+  grid-auto-rows: 52px;
   gap: 10px;
   min-height: 0;
   height: 100%;
   max-height: none;
   overflow: auto;
   padding-right: 6px;
+}
+
+.mini-breakdown-list .mini-row {
+  min-height: 52px;
+  display: grid;
+  align-content: center;
+  padding: 10px 12px;
 }
 
 .mini-pie-card {
@@ -2198,6 +2280,15 @@ tbody tr:hover td:not(.table-company-cell) {
   #databaseCreatePanel .editor-actions,
   #databaseCreatePanel .button-primary {
     width: 100%;
+  }
+
+  .manager-item {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-item-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

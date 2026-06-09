@@ -8,7 +8,7 @@
 <div align="center">
 
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-2563eb?style=for-the-badge)
-![Runtime](https://img.shields.io/badge/Runtime-Bundled%20Node-0f766e?style=for-the-badge)
+![Runtime](https://img.shields.io/badge/Runtime-Node%2024%2B%20Auto%20Setup-0f766e?style=for-the-badge)
 ![Storage](https://img.shields.io/badge/Storage-SQLite-f59e0b?style=for-the-badge)
 ![Launch](https://img.shields.io/badge/Launch-Double%20Click-7c3aed?style=for-the-badge)
 
@@ -51,7 +51,7 @@ ZJU Offer Dashboard 是一个本地运行的求职投递管理工具，适合用
 | `src/web/` | 前端页面 |
 | `src/server/` | 本地服务 |
 | `data/` | 你的数据库和本地数据 |
-| `runtime/packages/` | 各平台 Node 安装包 |
+| `runtime/` | Node 运行时缓存，首次启动需要时自动下载 |
 
 ## 使用方式
 
@@ -70,8 +70,8 @@ ZJU Offer Dashboard 是一个本地运行的求职投递管理工具，适合用
 ### 双击后会自动完成什么
 
 1. 自动识别你的系统和 CPU 架构
-2. 找到对应平台的 Node 运行时
-3. 首次启动时自动准备运行环境
+2. 优先检测系统是否已安装 Node.js 24 或更新版本
+3. 如果没有可用 Node，则自动下载并校验对应平台的官方 Node 运行时
 4. 在后台启动本地服务
 5. 打开启动页面
 6. 服务准备完成后自动在当前标签页进入 Dashboard
@@ -117,7 +117,9 @@ Windows 还可以查看：
 
 ### 2. 为什么第一次会稍微慢一点
 
-因为第一次会自动准备对应平台的 Node 运行时。
+因为第一次可能需要联网下载对应平台的 Node 运行时。下载完成后会缓存在 `runtime/` 目录，之后启动会直接复用。
+
+如果你的系统已经安装 Node.js 24 或更新版本，首次启动会直接使用系统 Node，不会下载运行时。
 
 ### 3. 我的数据会上传到外网吗
 

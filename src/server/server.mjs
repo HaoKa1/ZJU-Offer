@@ -57,16 +57,18 @@ const mimeTypes = {
   ".txt": "text/plain; charset=utf-8"
 };
 
-const shutdownWatchdog = setInterval(() => {
-  const now = Date.now();
-  pruneExpiredSessions(now);
-  if (activeSessions.size > 0) return;
-  if (!hasSeenBrowserSession && now - serverStartedAt < STARTUP_GRACE_MS) return;
-  if (now - lastSessionActivityAt < SHUTDOWN_IDLE_MS) return;
-  console.log("Offer Dashboard server is idle; shutting down.");
-  process.exit(0);
-}, 5000);
-shutdownWatchdog.unref?.();
+if (process.env.OFFER_DASHBOARD_AUTO_SHUTDOWN === "1") {
+  const shutdownWatchdog = setInterval(() => {
+    const now = Date.now();
+    pruneExpiredSessions(now);
+    if (activeSessions.size > 0) return;
+    if (!hasSeenBrowserSession && now - serverStartedAt < STARTUP_GRACE_MS) return;
+    if (now - lastSessionActivityAt < SHUTDOWN_IDLE_MS) return;
+    console.log("Offer Dashboard server is idle; shutting down.");
+    process.exit(0);
+  }, 5000);
+  shutdownWatchdog.unref?.();
+}
 
 createServer(async (req, res) => {
   try {

@@ -6,7 +6,7 @@ set EXIT_CODE=%ERRORLEVEL%
 if not "%EXIT_CODE%"=="0" (
   echo.
   echo Dashboard launcher failed with exit code %EXIT_CODE%.
-  echo Check "%SCRIPT_DIR%data\launcher.log" for details.
+  echo Check "%SCRIPT_DIR%..\..\data\launcher.log" for details.
   pause
 )
 exit /b %EXIT_CODE%

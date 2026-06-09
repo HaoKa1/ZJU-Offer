@@ -30,8 +30,8 @@
     <aside class="sidebar" aria-label="侧边操作区">
       <div class="sidebar-card shortcut-panel">
         <div class="brand-copy">
-          <p class="eyebrow">Recruitment</p>
-          <h1>招聘信息</h1>
+          <p class="eyebrow">Common Links</p>
+          <h1>常用链接</h1>
         </div>
 
         <div class="shortcut-stack recruitment-stack">
@@ -52,7 +52,7 @@
             </span>
           </a>
 
-          <div id="recruitmentShortcutGrid" class="shortcut-grid" aria-label="招聘信息自定义按钮"></div>
+          <div id="recruitmentShortcutGrid" class="shortcut-grid" aria-label="常用链接自定义按钮"></div>
         </div>
       </div>
 
@@ -62,12 +62,12 @@
 
       <div class="sidebar-card shortcut-panel">
         <div class="brand-copy">
-          <p class="eyebrow">Tools</p>
-          <h1>实用工具</h1>
+          <p class="eyebrow">Common Tools</p>
+          <h1>常用工具</h1>
         </div>
 
         <div class="shortcut-stack">
-          <div id="toolShortcutGrid" class="shortcut-grid" aria-label="实用工具按钮"></div>
+          <div id="toolShortcutGrid" class="shortcut-grid" aria-label="常用工具按钮"></div>
         </div>
       </div>
 
@@ -320,6 +320,77 @@
       <div class="editor-actions">
         <button id="saveShortcutModalButton" class="button button-primary" type="submit">保存按钮</button>
       </div>
+    </form>
+  </section>
+
+  <section id="infoManagerModal" class="editor-modal utility-modal" hidden aria-live="polite" aria-modal="true" role="dialog">
+    <div class="editor-head">
+      <div>
+        <p class="panel-kicker">Profile</p>
+        <h3>信息管理</h3>
+      </div>
+      <button id="closeInfoManagerButton" class="button button-quiet" type="button">关闭</button>
+    </div>
+    <p class="editor-hint">填写并保存个人信息，便于后续集中维护。</p>
+    <form id="infoManagerForm" class="editor-form">
+      <div class="editor-fields utility-fields manager-fields">
+        <label class="editor-field span-2">
+          <span>姓名</span>
+          <input id="profileNameInput" type="text" maxlength="40" autocomplete="name">
+        </label>
+        <label class="editor-field span-2">
+          <span>手机</span>
+          <input id="profilePhoneInput" type="tel" maxlength="40" autocomplete="tel">
+        </label>
+        <label class="editor-field span-2">
+          <span>邮箱</span>
+          <input id="profileEmailInput" type="email" maxlength="80" autocomplete="email">
+        </label>
+        <label class="editor-field span-2">
+          <span>学校</span>
+          <input id="profileSchoolInput" type="text" maxlength="80">
+        </label>
+        <label class="editor-field span-2">
+          <span>专业</span>
+          <input id="profileMajorInput" type="text" maxlength="80">
+        </label>
+        <label class="editor-field span-2">
+          <span>备注</span>
+          <textarea id="profileNoteInput" rows="4"></textarea>
+        </label>
+      </div>
+      <div id="infoManagerStatus" class="editor-status utility-status" hidden></div>
+      <div class="editor-actions">
+        <button class="button button-primary" type="submit">保存</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="resumeManagerModal" class="editor-modal utility-modal" hidden aria-live="polite" aria-modal="true" role="dialog">
+    <div class="editor-head">
+      <div>
+        <p class="panel-kicker">Resume</p>
+        <h3>简历管理</h3>
+      </div>
+      <button id="closeResumeManagerButton" class="button button-quiet" type="button">关闭</button>
+    </div>
+    <p class="editor-hint">添加 PDF 简历附件并保存为不同条目，点击条目即可在浏览器中打开。</p>
+    <form id="resumeManagerForm" class="editor-form">
+      <div class="editor-fields utility-fields manager-fields">
+        <label class="editor-field span-2">
+          <span>条目名称</span>
+          <input id="resumeNameInput" type="text" maxlength="80" placeholder="例如：中文技术简历">
+        </label>
+        <label class="editor-field span-2">
+          <span>PDF 附件</span>
+          <input id="resumeFileInput" type="file" accept="application/pdf,.pdf">
+        </label>
+      </div>
+      <div class="editor-actions">
+        <button class="button button-primary" type="submit">添加简历</button>
+      </div>
+      <div id="resumeManagerStatus" class="editor-status utility-status" hidden></div>
+      <div id="resumeList" class="manager-list" aria-label="已保存简历"></div>
     </form>
   </section>
 

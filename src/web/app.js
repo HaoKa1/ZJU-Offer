@@ -7,6 +7,10 @@ const DATABASE_ONBOARDING_KEY = "resume-dashboard-database-onboarding-seen";
 const DEFAULT_DATABASE_FILE = "resume-dashboard.sqlite3";
 const SERVICE_SESSION_KEY = "offer-dashboard-session-id";
 const SERVICE_HEARTBEAT_MS = 10000;
+const PERSONAL_INFO_KEY = "offer-dashboard-personal-info";
+const RESUME_DB_NAME = "offer-dashboard-resumes";
+const RESUME_DB_VERSION = 1;
+const RESUME_STORE_NAME = "resumes";
 
 const HEADER = {
   company: "公司名称",
@@ -79,32 +83,52 @@ const RECORD_SORT_OPTIONS = [
   { value: "node", label: "按照节点时间排列" }
 ];
 
+const COMMON_LINK_SHORTCUTS = {
+  boss: {
+    label: "BOSS直聘",
+    url: "https://www.zhipin.com/hangzhou/?seoRefer=index"
+  },
+  zhilian: {
+    label: "智联招聘",
+    url: "https://www.zhaopin.com/"
+  },
+  wonderCv: {
+    label: "超级简历",
+    url: "https://www.wondercv.com/jianlimoban/"
+  },
+  aiRelay: {
+    label: "AI中转订阅",
+    url: "https://cdk.aixhan.com/?aff=af_40c9715138ab"
+  }
+};
+
+const PINNED_COMMON_LINKS = [
+  COMMON_LINK_SHORTCUTS.wonderCv,
+  COMMON_LINK_SHORTCUTS.aiRelay
+];
+
+const BUILTIN_TOOL_ACTIONS = [
+  { action: "info", label: "信息管理" },
+  { action: "resume", label: "简历管理" }
+];
+
 const SHORTCUT_GROUPS = {
   recruitment: {
-    title: "招聘信息",
-    kicker: "Recruitment",
+    title: "常用链接",
+    kicker: "Common Links",
     maxItems: 4,
     defaults: [
-      {
-        label: "BOSS直聘",
-        url: "https://www.zhipin.com/hangzhou/?seoRefer=index"
-      }
+      COMMON_LINK_SHORTCUTS.boss,
+      COMMON_LINK_SHORTCUTS.zhilian,
+      COMMON_LINK_SHORTCUTS.wonderCv,
+      COMMON_LINK_SHORTCUTS.aiRelay
     ]
   },
   tools: {
-    title: "实用工具",
-    kicker: "Tools",
+    title: "常用工具",
+    kicker: "Common Tools",
     maxItems: 4,
-    defaults: [
-      {
-        label: "超级简历",
-        url: "https://www.wondercv.com/jianlimoban/"
-      },
-      {
-        label: "AI订阅",
-        url: "https://cdk.aixhan.com/?aff=af_40c9715138ab"
-      }
-    ]
+    defaults: []
   }
 };
 
@@ -136,7 +160,7 @@ const FIELD_ALIASES = {
   domain: ["企业领域", "领域", "行业", "赛道", "方向", "domain", "industry", "track"],
   companyType: ["企业性质", "公司性质", "单位性质", "ownership", "company type"],
   position: ["方向 / 岗位", "意向岗位", "岗位", "职位", "岗位名称", "position", "role", "job", "title"],
-  city: ["岗位城市", "城市", "地点", "工作地点", "location", "city"],
+  city: ["岗位城市", "城市", "工作城市", "办公城市", "work city", "job city", "city"],
   roleType: ["岗位性质", "职位性质", "job type", "role type"],
   stage: ["阶段", "状态", "进度", "当前阶段", "stage", "status"],
   deadline: ["投递截止时间", "截止时间", "截止", "deadline", "ddl"],
@@ -261,6 +285,23 @@ const els = {
   shortcutModalForm: document.querySelector("#shortcutModalForm"),
   shortcutModalName: document.querySelector("#shortcutModalName"),
   shortcutModalUrl: document.querySelector("#shortcutModalUrl"),
+  infoManagerModal: document.querySelector("#infoManagerModal"),
+  closeInfoManagerButton: document.querySelector("#closeInfoManagerButton"),
+  infoManagerForm: document.querySelector("#infoManagerForm"),
+  profileNameInput: document.querySelector("#profileNameInput"),
+  profilePhoneInput: document.querySelector("#profilePhoneInput"),
+  profileEmailInput: document.querySelector("#profileEmailInput"),
+  profileSchoolInput: document.querySelector("#profileSchoolInput"),
+  profileMajorInput: document.querySelector("#profileMajorInput"),
+  profileNoteInput: document.querySelector("#profileNoteInput"),
+  infoManagerStatus: document.querySelector("#infoManagerStatus"),
+  resumeManagerModal: document.querySelector("#resumeManagerModal"),
+  closeResumeManagerButton: document.querySelector("#closeResumeManagerButton"),
+  resumeManagerForm: document.querySelector("#resumeManagerForm"),
+  resumeNameInput: document.querySelector("#resumeNameInput"),
+  resumeFileInput: document.querySelector("#resumeFileInput"),
+  resumeManagerStatus: document.querySelector("#resumeManagerStatus"),
+  resumeList: document.querySelector("#resumeList"),
   databaseModal: document.querySelector("#databaseModal"),
   closeDatabaseModalButton: document.querySelector("#closeDatabaseModalButton"),
   databaseSwitchTab: document.querySelector("#databaseSwitchTab"),
@@ -454,6 +495,20 @@ function wireEvents() {
     closeUtilityModal();
   });
   els.shortcutModalForm.addEventListener("submit", handleShortcutSubmit);
+  els.closeInfoManagerButton.addEventListener("click", () => {
+    closeUtilityModal();
+  });
+  els.infoManagerForm.addEventListener("submit", handleInfoManagerSubmit);
+  els.closeResumeManagerButton.addEventListener("click", () => {
+    closeUtilityModal();
+  });
+  els.resumeManagerForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void handleResumeManagerSubmit();
+  });
+  els.resumeList.addEventListener("click", (event) => {
+    void handleResumeListClick(event);
+  });
   els.closeDatabaseModalButton.addEventListener("click", () => {
     closeUtilityModal();
   });
@@ -577,7 +632,7 @@ function loadShortcuts() {
   }
 
   const hasStructuredData = parsed && typeof parsed === "object";
-  const shortcuts = {
+  const shortcuts = migrateShortcutPlacement({
     recruitment: sanitizeShortcutList(
       hasStructuredData ? parsed.recruitment : SHORTCUT_GROUPS.recruitment.defaults,
       SHORTCUT_GROUPS.recruitment.maxItems
@@ -586,7 +641,7 @@ function loadShortcuts() {
       hasStructuredData ? parsed.tools : SHORTCUT_GROUPS.tools.defaults,
       SHORTCUT_GROUPS.tools.maxItems
     )
-  };
+  });
 
   if (!hasStructuredData) {
     const legacyShortcut = loadLegacyCustomShortcut();
@@ -677,24 +732,72 @@ async function saveShortcutsToServer(shortcuts = state.shortcuts) {
 }
 
 function sanitizeShortcutGroups(shortcuts) {
-  return {
+  return migrateShortcutPlacement({
     recruitment: sanitizeShortcutList(shortcuts?.recruitment, SHORTCUT_GROUPS.recruitment.maxItems),
     tools: sanitizeShortcutList(shortcuts?.tools, SHORTCUT_GROUPS.tools.maxItems)
-  };
+  });
 }
 
 function buildDefaultShortcutGroups() {
-  return {
+  return migrateShortcutPlacement({
     recruitment: sanitizeShortcutList(SHORTCUT_GROUPS.recruitment.defaults, SHORTCUT_GROUPS.recruitment.maxItems),
     tools: sanitizeShortcutList(SHORTCUT_GROUPS.tools.defaults, SHORTCUT_GROUPS.tools.maxItems)
-  };
+  });
 }
 
 function mergeShortcutGroups(shortcuts) {
-  return {
+  return migrateShortcutPlacement({
     recruitment: shortcuts.recruitment.length ? shortcuts.recruitment : SHORTCUT_GROUPS.recruitment.defaults,
     tools: shortcuts.tools.length ? shortcuts.tools : SHORTCUT_GROUPS.tools.defaults
+  });
+}
+
+function migrateShortcutPlacement(shortcuts) {
+  const migrationUrlKeys = new Set(PINNED_COMMON_LINKS.map((item) => shortcutUrlKey(item.url)));
+  const recruitment = uniqueShortcutItems(shortcuts?.recruitment || []);
+  const tools = uniqueShortcutItems(shortcuts?.tools || []);
+  const movedLinks = [];
+  const remainingTools = [];
+
+  for (const item of tools) {
+    if (migrationUrlKeys.has(shortcutUrlKey(item.url))) {
+      movedLinks.push(item);
+    } else {
+      remainingTools.push(item);
+    }
+  }
+
+  const nextRecruitment = [...recruitment];
+  for (const defaultLink of PINNED_COMMON_LINKS) {
+    if (nextRecruitment.length >= SHORTCUT_GROUPS.recruitment.maxItems) break;
+    const defaultUrlKey = shortcutUrlKey(defaultLink.url);
+    if (nextRecruitment.some((item) => shortcutUrlKey(item.url) === defaultUrlKey)) continue;
+    const migrated = movedLinks.find((item) => shortcutUrlKey(item.url) === defaultUrlKey);
+    if (migrated) nextRecruitment.push(migrated);
+  }
+
+  return {
+    recruitment: nextRecruitment.slice(0, SHORTCUT_GROUPS.recruitment.maxItems),
+    tools: remainingTools.slice(0, SHORTCUT_GROUPS.tools.maxItems)
   };
+}
+
+function uniqueShortcutItems(items) {
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    const urlKey = shortcutUrlKey(item.url);
+    const labelKey = String(item.label || "").trim().toLowerCase();
+    const key = `${labelKey}|${urlKey}`;
+    if (!item.label || !urlKey || seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function shortcutUrlKey(value) {
+  return String(normalizeShortcutUrl(value) || value || "").trim().replace(/\/$/, "").toLowerCase();
 }
 
 function hasAnyShortcutItems(shortcuts) {
@@ -706,6 +809,18 @@ function shortcutGroupsEqual(left, right) {
 }
 
 function handleShortcutGridClick(group, event) {
+  if (group === "tools") {
+    const toolButton = event.target.closest("[data-tool-action]");
+    if (toolButton) {
+      if (toolButton.dataset.toolAction === "info") {
+        openInfoManagerModal();
+      } else if (toolButton.dataset.toolAction === "resume") {
+        void openResumeManagerModal();
+      }
+      return;
+    }
+  }
+
   const actionButton = event.target.closest("[data-shortcut-action]");
   if (actionButton) {
     if (actionButton.dataset.shortcutAction === "add") {
@@ -800,6 +915,17 @@ function renderShortcutGroup(group, container) {
   const config = SHORTCUT_GROUPS[group];
   const items = state.shortcuts[group] || [];
   container.innerHTML = "";
+
+  if (group === "tools") {
+    for (const item of BUILTIN_TOOL_ACTIONS) {
+      const node = document.createElement("button");
+      node.className = "shortcut-link shortcut-tile-link shortcut-tool-button";
+      node.type = "button";
+      node.dataset.toolAction = item.action;
+      node.innerHTML = `<span>${escapeHtml(item.label)}</span>`;
+      container.appendChild(node);
+    }
+  }
 
   items.forEach((item, index) => {
     const node = document.createElement("article");
@@ -960,6 +1086,8 @@ function openUtilityModal(kind) {
   els.utilityOverlay.hidden = false;
   els.detailModal.hidden = kind !== "detail";
   els.shortcutModal.hidden = kind !== "shortcut";
+  els.infoManagerModal.hidden = kind !== "info";
+  els.resumeManagerModal.hidden = kind !== "resume";
   els.databaseModal.hidden = kind !== "database";
 }
 
@@ -968,7 +1096,276 @@ function closeUtilityModal() {
   els.utilityOverlay.hidden = true;
   els.detailModal.hidden = true;
   els.shortcutModal.hidden = true;
+  els.infoManagerModal.hidden = true;
+  els.resumeManagerModal.hidden = true;
   els.databaseModal.hidden = true;
+}
+
+function openInfoManagerModal() {
+  const profile = loadPersonalInfo();
+  els.profileNameInput.value = profile.name || "";
+  els.profilePhoneInput.value = profile.phone || "";
+  els.profileEmailInput.value = profile.email || "";
+  els.profileSchoolInput.value = profile.school || "";
+  els.profileMajorInput.value = profile.major || "";
+  els.profileNoteInput.value = profile.note || "";
+  setInfoManagerStatus("");
+  openUtilityModal("info");
+  window.setTimeout(() => {
+    els.profileNameInput.focus();
+  }, 0);
+}
+
+function loadPersonalInfo() {
+  try {
+    const raw = localStorage.getItem(PERSONAL_INFO_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    console.warn("Failed to load personal info", error);
+    return {};
+  }
+}
+
+function handleInfoManagerSubmit(event) {
+  event.preventDefault();
+  const profile = {
+    name: String(els.profileNameInput.value || "").trim(),
+    phone: String(els.profilePhoneInput.value || "").trim(),
+    email: String(els.profileEmailInput.value || "").trim(),
+    school: String(els.profileSchoolInput.value || "").trim(),
+    major: String(els.profileMajorInput.value || "").trim(),
+    note: String(els.profileNoteInput.value || "").trim(),
+    updatedAt: new Date().toISOString()
+  };
+  localStorage.setItem(PERSONAL_INFO_KEY, JSON.stringify(profile));
+  setInfoManagerStatus("个人信息已保存。", "success");
+}
+
+function setInfoManagerStatus(message, tone = "idle") {
+  els.infoManagerStatus.hidden = !message;
+  els.infoManagerStatus.textContent = message || "";
+  els.infoManagerStatus.dataset.tone = tone;
+}
+
+async function openResumeManagerModal() {
+  els.resumeNameInput.value = "";
+  els.resumeFileInput.value = "";
+  setResumeManagerStatus("");
+  openUtilityModal("resume");
+  await renderResumeList();
+}
+
+async function handleResumeManagerSubmit() {
+  const file = els.resumeFileInput.files?.[0] || null;
+  const label = String(els.resumeNameInput.value || "").trim();
+
+  if (!file) {
+    setResumeManagerStatus("请选择 PDF 简历附件。", "error");
+    return;
+  }
+
+  const fileName = String(file.name || "");
+  if (file.type !== "application/pdf" && !fileName.toLowerCase().endsWith(".pdf")) {
+    setResumeManagerStatus("目前仅支持添加 PDF 简历。", "error");
+    return;
+  }
+
+  const entry = {
+    id: `resume-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    name: label || fileName.replace(/\.pdf$/i, "") || "未命名简历",
+    fileName,
+    type: "application/pdf",
+    size: file.size,
+    addedAt: new Date().toISOString(),
+    blob: file
+  };
+
+  try {
+    await putResumeEntry(entry);
+    els.resumeNameInput.value = "";
+    els.resumeFileInput.value = "";
+    setResumeManagerStatus("简历已保存。", "success");
+    await renderResumeList();
+  } catch (error) {
+    console.error(error);
+    setResumeManagerStatus(`保存失败：${error.message}`, "error");
+  }
+}
+
+async function renderResumeList() {
+  els.resumeList.innerHTML = "";
+  let entries = [];
+  try {
+    entries = await getResumeEntries();
+  } catch (error) {
+    console.error(error);
+    setResumeManagerStatus(`读取失败：${error.message}`, "error");
+    return;
+  }
+
+  if (!entries.length) {
+    const empty = document.createElement("article");
+    empty.className = "manager-empty";
+    empty.textContent = "暂无已保存的简历。";
+    els.resumeList.appendChild(empty);
+    return;
+  }
+
+  for (const entry of entries) {
+    const item = document.createElement("article");
+    item.className = "manager-item";
+    item.innerHTML = `
+      <button class="manager-item-main" type="button" data-resume-action="open" data-resume-id="${escapeAttribute(entry.id)}">
+        <strong>${escapeHtml(entry.name || "未命名简历")}</strong>
+        <span>${escapeHtml(entry.fileName || "PDF 简历")} · ${formatFileSize(entry.size)} · ${formatDateTime(new Date(entry.addedAt))}</span>
+      </button>
+      <div class="manager-item-actions">
+        <button class="button table-action" type="button" data-resume-action="open" data-resume-id="${escapeAttribute(entry.id)}">打开</button>
+        <button class="button button-danger table-action" type="button" data-resume-action="delete" data-resume-id="${escapeAttribute(entry.id)}">删除</button>
+      </div>
+    `;
+    els.resumeList.appendChild(item);
+  }
+}
+
+async function handleResumeListClick(event) {
+  const button = event.target.closest("[data-resume-action]");
+  if (!button) return;
+
+  const action = button.dataset.resumeAction;
+  const id = button.dataset.resumeId || "";
+  if (!id) return;
+
+  if (action === "open") {
+    await openResumeEntry(id);
+    return;
+  }
+
+  if (action === "delete") {
+    const confirmed = window.confirm("确定删除这份简历附件吗？");
+    if (!confirmed) return;
+    try {
+      await deleteResumeEntry(id);
+      setResumeManagerStatus("简历已删除。", "success");
+      await renderResumeList();
+    } catch (error) {
+      console.error(error);
+      setResumeManagerStatus(`删除失败：${error.message}`, "error");
+    }
+  }
+}
+
+async function openResumeEntry(id) {
+  const viewer = window.open("about:blank", "_blank");
+  if (viewer) viewer.opener = null;
+  try {
+    const entry = await getResumeEntry(id);
+    if (!entry?.blob) throw new Error("没有找到对应的简历附件。");
+    const url = URL.createObjectURL(entry.blob);
+    if (viewer) {
+      viewer.location.href = url;
+    } else {
+      window.open(url, "_blank");
+    }
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 60000);
+  } catch (error) {
+    if (viewer) viewer.close();
+    console.error(error);
+    setResumeManagerStatus(`打开失败：${error.message}`, "error");
+  }
+}
+
+function openResumeDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(RESUME_DB_NAME, RESUME_DB_VERSION);
+    request.addEventListener("upgradeneeded", () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(RESUME_STORE_NAME)) {
+        db.createObjectStore(RESUME_STORE_NAME, { keyPath: "id" });
+      }
+    });
+    request.addEventListener("success", () => resolve(request.result));
+    request.addEventListener("error", () => reject(request.error || new Error("无法打开简历存储。")));
+  });
+}
+
+async function withResumeStore(mode, callback) {
+  const db = await openResumeDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(RESUME_STORE_NAME, mode);
+    const store = transaction.objectStore(RESUME_STORE_NAME);
+    let result;
+    transaction.addEventListener("complete", () => {
+      db.close();
+      resolve(result);
+    });
+    transaction.addEventListener("error", () => {
+      db.close();
+      reject(transaction.error || new Error("简历存储操作失败。"));
+    });
+    result = callback(store);
+  });
+}
+
+function putResumeEntry(entry) {
+  return withResumeStore("readwrite", (store) => store.put(entry));
+}
+
+function deleteResumeEntry(id) {
+  return withResumeStore("readwrite", (store) => store.delete(id));
+}
+
+function getResumeEntry(id) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const db = await openResumeDatabase();
+      const transaction = db.transaction(RESUME_STORE_NAME, "readonly");
+      const store = transaction.objectStore(RESUME_STORE_NAME);
+      const request = store.get(id);
+      request.addEventListener("success", () => {
+        db.close();
+        resolve(request.result || null);
+      });
+      request.addEventListener("error", () => {
+        db.close();
+        reject(request.error || new Error("读取简历失败。"));
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function getResumeEntries() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const db = await openResumeDatabase();
+      const transaction = db.transaction(RESUME_STORE_NAME, "readonly");
+      const store = transaction.objectStore(RESUME_STORE_NAME);
+      const request = store.getAll();
+      request.addEventListener("success", () => {
+        db.close();
+        const entries = Array.isArray(request.result) ? request.result : [];
+        entries.sort((left, right) => String(right.addedAt || "").localeCompare(String(left.addedAt || "")));
+        resolve(entries);
+      });
+      request.addEventListener("error", () => {
+        db.close();
+        reject(request.error || new Error("读取简历列表失败。"));
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function setResumeManagerStatus(message, tone = "idle") {
+  els.resumeManagerStatus.hidden = !message;
+  els.resumeManagerStatus.textContent = message || "";
+  els.resumeManagerStatus.dataset.tone = tone;
 }
 
 async function openDatabaseModal() {
@@ -2059,6 +2456,7 @@ function pickField(row, aliases) {
 
   for (const alias of aliases) {
     const normalizedAlias = normalizeKey(alias);
+    if (normalizedAlias.length < 3) continue;
     const matched = entries.find(([key]) => normalizeKey(key).includes(normalizedAlias) || normalizedAlias.includes(normalizeKey(key)));
     if (matched && matched[1]) return matched[1];
   }
@@ -3015,7 +3413,7 @@ function getUpcomingEventDate(row) {
 }
 
 function getNodeDate(row) {
-  return pickNearestDate(row.writtenTestAt, row.interview1At, row.interview2At, row.interview3At, row.presentationAt);
+  return pickNextUpcomingDate(row.writtenTestAt, row.interview1At, row.interview2At, row.interview3At, row.presentationAt);
 }
 
 function getLatestActivityDate(row) {
@@ -3038,12 +3436,6 @@ function pickNextUpcomingDate(...dates) {
     .filter((date) => date instanceof Date && !Number.isNaN(date.getTime()) && date.getTime() >= now)
     .sort((left, right) => left - right);
   return future[0] || null;
-}
-
-function pickNearestDate(...dates) {
-  return [...dates]
-    .filter((date) => date instanceof Date && !Number.isNaN(date.getTime()))
-    .sort((left, right) => left - right)[0] || null;
 }
 
 function parseDate(value) {
@@ -3082,6 +3474,13 @@ function formatDateTime(date) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
+}
+
+function formatFileSize(size) {
+  const value = Number(size || 0);
+  if (!Number.isFinite(value) || value <= 0) return "未知大小";
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function formatDateInputValue(value) {

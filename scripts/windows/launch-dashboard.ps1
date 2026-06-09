@@ -9,8 +9,9 @@ $DataDir = Join-Path $ProjectRoot "data"
 $ServerPidPath = Join-Path $DataDir "dashboard-server.pid"
 $LauncherLogPath = Join-Path $DataDir "launcher.log"
 $RuntimeDir = Join-Path $ProjectRoot "runtime"
-$RuntimePackagesDir = Join-Path $RuntimeDir "packages"
+$RuntimeDownloadsDir = Join-Path $RuntimeDir "downloads"
 $NodeVersion = "24.14.0"
+$NodeDistBaseUrl = "https://nodejs.org/dist/v$NodeVersion"
 $Port = 4782
 
 function Write-LauncherLog {
@@ -54,24 +55,108 @@ function Find-NodeExeUnder {
   return $null
 }
 
-function Expand-BundledNodeRuntime {
+function Test-NodeVersion {
+  param([string]$NodePath)
+
+  if (-not $NodePath -or -not (Test-Path -LiteralPath $NodePath)) {
+    return $false
+  }
+
+  try {
+    $VersionText = & $NodePath --version 2>$null
+    if (-not $VersionText) {
+      return $false
+    }
+
+    $Major = [int]($VersionText.TrimStart("v").Split(".")[0])
+    return $Major -ge 24
+  } catch {
+    return $false
+  }
+}
+
+function Invoke-NodeDownload {
+  param(
+    [string]$Url,
+    [string]$DestinationPath
+  )
+
+  $TempPath = "$DestinationPath.tmp"
+  if (Test-Path -LiteralPath $TempPath) {
+    Remove-Item -LiteralPath $TempPath -Force -ErrorAction SilentlyContinue
+  }
+
+  Invoke-WebRequest -Uri $Url -OutFile $TempPath -UseBasicParsing
+  Move-Item -LiteralPath $TempPath -Destination $DestinationPath -Force
+}
+
+function Test-NodeArchiveChecksum {
+  param(
+    [string]$ArchivePath,
+    [string]$ArchiveName
+  )
+
+  $ChecksumPath = Join-Path $RuntimeDownloadsDir "SHASUMS256.txt"
+  if (-not (Test-Path -LiteralPath $ChecksumPath)) {
+    Invoke-NodeDownload -Url "$NodeDistBaseUrl/SHASUMS256.txt" -DestinationPath $ChecksumPath
+  }
+
+  $Line = Get-Content -LiteralPath $ChecksumPath | Where-Object { $_ -match "\s$([regex]::Escape($ArchiveName))$" } | Select-Object -First 1
+  if (-not $Line) {
+    Write-LauncherLog "Checksum entry for $ArchiveName was not found."
+    return $false
+  }
+
+  $ExpectedHash = ($Line -split "\s+")[0].ToLowerInvariant()
+  $ActualHash = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  return $ExpectedHash -eq $ActualHash
+}
+
+function Get-CachedNodeRuntime {
   $RuntimeKey = Get-WindowsRuntimeKey
-  $ArchivePath = Join-Path $RuntimePackagesDir "node-v$NodeVersion-$RuntimeKey.zip"
   $TargetDir = Join-Path $RuntimeDir $RuntimeKey
   $ResolvedNode = Find-NodeExeUnder -BasePath $TargetDir
-  if ($ResolvedNode) {
+  if ($ResolvedNode -and (Test-NodeVersion -NodePath $ResolvedNode)) {
     return $ResolvedNode
   }
 
+  return $null
+}
+
+function Expand-Or-DownloadNodeRuntime {
+  $RuntimeKey = Get-WindowsRuntimeKey
+  $ArchiveName = "node-v$NodeVersion-$RuntimeKey.zip"
+  $ArchivePath = Join-Path $RuntimeDownloadsDir $ArchiveName
+  $TargetDir = Join-Path $RuntimeDir $RuntimeKey
+
   if (-not (Test-Path -LiteralPath $ArchivePath)) {
-    return $null
+    $DownloadUrl = "$NodeDistBaseUrl/$ArchiveName"
+    New-Item -ItemType Directory -Path $RuntimeDownloadsDir -Force | Out-Null
+    Write-LauncherLog "Downloading Node runtime from $DownloadUrl"
+    try {
+      Invoke-NodeDownload -Url $DownloadUrl -DestinationPath $ArchivePath
+    } catch {
+      Write-LauncherLog "Failed to download Node runtime: $($_.Exception.Message)"
+      if (Test-Path -LiteralPath $ArchivePath) {
+        Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+      }
+      return $null
+    }
   }
 
-  Write-LauncherLog "Extracting bundled Node runtime from $ArchivePath"
+  if (-not (Test-NodeArchiveChecksum -ArchivePath $ArchivePath -ArchiveName $ArchiveName)) {
+    Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+    throw "Downloaded Node runtime checksum did not match $ArchiveName. Please retry."
+  }
+
+  Write-LauncherLog "Extracting Node runtime from $ArchivePath"
+  if (Test-Path -LiteralPath $TargetDir) {
+    Remove-Item -LiteralPath $TargetDir -Recurse -Force
+  }
   New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
   Expand-Archive -LiteralPath $ArchivePath -DestinationPath $TargetDir -Force
   $ResolvedNode = Find-NodeExeUnder -BasePath $TargetDir
-  if ($ResolvedNode) {
+  if ($ResolvedNode -and (Test-NodeVersion -NodePath $ResolvedNode)) {
     return $ResolvedNode
   }
 
@@ -79,9 +164,9 @@ function Expand-BundledNodeRuntime {
 }
 
 function Resolve-NodeExe {
-  $BundledNode = Expand-BundledNodeRuntime
-  if ($BundledNode) {
-    return $BundledNode
+  $SystemNode = Get-Command node -ErrorAction SilentlyContinue
+  if ($SystemNode -and (Test-NodeVersion -NodePath $SystemNode.Source)) {
+    return $SystemNode.Source
   }
 
   $Candidates = @(
@@ -89,17 +174,22 @@ function Resolve-NodeExe {
   )
 
   foreach ($Candidate in $Candidates) {
-    if ($Candidate -and (Test-Path -LiteralPath $Candidate)) {
+    if ($Candidate -and (Test-NodeVersion -NodePath $Candidate)) {
       return $Candidate
     }
   }
 
-  $SystemNode = Get-Command node -ErrorAction SilentlyContinue
-  if ($SystemNode) {
-    return $SystemNode.Source
+  $CachedNode = Get-CachedNodeRuntime
+  if ($CachedNode) {
+    return $CachedNode
   }
 
-  throw "Node runtime not found. Put the official Node package in runtime/packages, or make node available on PATH."
+  $DownloadedNode = Expand-Or-DownloadNodeRuntime
+  if ($DownloadedNode) {
+    return $DownloadedNode
+  }
+
+  throw "Node runtime not found. Connect to the internet for first launch, or install Node.js 24+ and make node available on PATH."
 }
 
 function Test-ProcessAlive {
@@ -217,7 +307,7 @@ function Open-DashboardBrowser {
 
 try {
   New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
-  New-Item -ItemType Directory -Path $RuntimePackagesDir -Force | Out-Null
+  New-Item -ItemType Directory -Path $RuntimeDownloadsDir -Force | Out-Null
   Write-LauncherLog "Launcher started from $ProjectRoot"
   $NodeExe = Resolve-NodeExe
   Write-LauncherLog "Using Node runtime $NodeExe"

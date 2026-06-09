@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -14,6 +15,7 @@ internal static class Program
     private const int HealthAttempts = 30;
     private const int HealthDelayMs = 300;
     private const string NodeVersion = "24.14.0";
+    private const string NodeDistBaseUrl = "https://nodejs.org/dist/v24.14.0";
     private static string _launcherLogPath = string.Empty;
 
     [STAThread]
@@ -32,12 +34,12 @@ internal static class Program
 
             if (!File.Exists(launchPage))
             {
-                throw new FileNotFoundException("启动页面不存在。", launchPage);
+                throw new FileNotFoundException("Launch page was not found.", launchPage);
             }
 
             if (!File.Exists(serverScript))
             {
-                throw new FileNotFoundException("服务脚本不存在。", serverScript);
+                throw new FileNotFoundException("Server script was not found.", serverScript);
             }
 
             string nodeExe = ResolveNodeExe(root);
@@ -66,7 +68,7 @@ internal static class Program
         {
             Log("Launcher failed: " + ex);
             MessageBox.Show(
-                "Offer Dashboard 启动失败。\r\n\r\n" + ex.Message,
+                "Offer Dashboard launch failed.\r\n\r\n" + ex.Message,
                 "Offer Dashboard",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
@@ -76,33 +78,159 @@ internal static class Program
 
     private static string ResolveNodeExe(string root)
     {
+        string systemNode = FindSystemNode();
+        if (!string.IsNullOrEmpty(systemNode) && IsCompatibleNode(systemNode))
+        {
+            return systemNode;
+        }
+
         string runtimeKey = GetWindowsRuntimeKey();
         string runtimeDir = Path.Combine(root, "runtime");
-        string packagePath = Path.Combine(runtimeDir, "packages", string.Format("node-v{0}-{1}.zip", NodeVersion, runtimeKey));
+        string downloadsDir = Path.Combine(runtimeDir, "downloads");
+        string archiveName = string.Format("node-v{0}-{1}.zip", NodeVersion, runtimeKey);
+        string packagePath = Path.Combine(downloadsDir, archiveName);
         string targetDir = Path.Combine(runtimeDir, runtimeKey);
 
         string existing = FindNodeExeUnder(targetDir);
-        if (!string.IsNullOrEmpty(existing))
+        if (!string.IsNullOrEmpty(existing) && IsCompatibleNode(existing))
         {
             return existing;
         }
 
         if (!File.Exists(packagePath))
         {
-            throw new FileNotFoundException("未找到内置 Node 运行时压缩包。", packagePath);
+            Directory.CreateDirectory(downloadsDir);
+            string downloadUrl = NodeDistBaseUrl + "/" + archiveName;
+            Log("Downloading Node runtime from " + downloadUrl);
+            DownloadFile(downloadUrl, packagePath);
+        }
+
+        if (!VerifyArchiveChecksum(downloadsDir, packagePath, archiveName))
+        {
+            File.Delete(packagePath);
+            throw new InvalidOperationException("Downloaded Node runtime checksum did not match. Please retry.");
+        }
+
+        if (Directory.Exists(targetDir))
+        {
+            Directory.Delete(targetDir, true);
         }
 
         Directory.CreateDirectory(targetDir);
-        Log("Extracting bundled runtime from " + packagePath);
+        Log("Extracting Node runtime from " + packagePath);
         ZipFile.ExtractToDirectory(packagePath, targetDir);
 
         string extracted = FindNodeExeUnder(targetDir);
-        if (!string.IsNullOrEmpty(extracted))
+        if (!string.IsNullOrEmpty(extracted) && IsCompatibleNode(extracted))
         {
             return extracted;
         }
 
-        throw new FileNotFoundException("解压后仍未找到 node.exe。", targetDir);
+        throw new FileNotFoundException("node.exe was not found after extracting the Node runtime.", targetDir);
+    }
+
+    private static string FindSystemNode()
+    {
+        string pathValue = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        foreach (string directory in pathValue.Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                continue;
+            }
+
+            string candidate = Path.Combine(directory.Trim(), "node.exe");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static bool IsCompatibleNode(string nodeExe)
+    {
+        try
+        {
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = nodeExe,
+                Arguments = "--version",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            using (Process process = Process.Start(startInfo))
+            {
+                if (process == null)
+                {
+                    return false;
+                }
+
+                string version = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit(3000);
+                if (!version.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                int major;
+                return int.TryParse(version.Substring(1).Split('.')[0], out major) && major >= 24;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void DownloadFile(string url, string destinationPath)
+    {
+        string tempPath = destinationPath + ".tmp";
+        if (File.Exists(tempPath))
+        {
+            File.Delete(tempPath);
+        }
+
+        using (WebClient client = new WebClient())
+        {
+            client.DownloadFile(url, tempPath);
+        }
+
+        if (File.Exists(destinationPath))
+        {
+            File.Delete(destinationPath);
+        }
+        File.Move(tempPath, destinationPath);
+    }
+
+    private static bool VerifyArchiveChecksum(string downloadsDir, string archivePath, string archiveName)
+    {
+        string shasumsPath = Path.Combine(downloadsDir, "SHASUMS256.txt");
+        if (!File.Exists(shasumsPath))
+        {
+            DownloadFile(NodeDistBaseUrl + "/SHASUMS256.txt", shasumsPath);
+        }
+
+        string expected = File
+            .ReadLines(shasumsPath)
+            .Where(line => line.EndsWith(" " + archiveName, StringComparison.Ordinal))
+            .Select(line => line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
+            .FirstOrDefault();
+
+        if (string.IsNullOrEmpty(expected))
+        {
+            return false;
+        }
+
+        using (SHA256 sha = SHA256.Create())
+        using (FileStream stream = File.OpenRead(archivePath))
+        {
+            string actual = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
+            return string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     private static string GetWindowsRuntimeKey()

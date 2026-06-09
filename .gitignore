@@ -5,6 +5,5 @@ data/*.pid
 data/_*.html
 __pycache__/
 runtime/*
-!runtime/packages/
-!runtime/packages/**
+!runtime/README.md
 release/

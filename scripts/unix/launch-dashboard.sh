@@ -9,8 +9,9 @@ DATA_DIR="$PROJECT_ROOT/data"
 PID_FILE="$DATA_DIR/dashboard-server.pid"
 PORT="${PORT:-4782}"
 RUNTIME_DIR="$PROJECT_ROOT/runtime"
-PACKAGES_DIR="$RUNTIME_DIR/packages"
+DOWNLOADS_DIR="$RUNTIME_DIR/downloads"
 NODE_VERSION="24.14.0"
+NODE_DIST_BASE_URL="https://nodejs.org/dist/v$NODE_VERSION"
 
 detect_runtime_key() {
   os=$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')
@@ -61,44 +62,127 @@ find_node_under() {
   return 1
 }
 
-ensure_bundled_node() {
-  runtime_key=$(detect_runtime_key)
-  target_dir="$RUNTIME_DIR/$runtime_key"
-  archive_path="$PACKAGES_DIR/node-v$NODE_VERSION-$runtime_key.tar.gz"
+download_file() {
+  url=$1
+  destination=$2
+  temp_path="$destination.tmp"
+  rm -f "$temp_path"
 
-  if node_path=$(find_node_under "$target_dir"); then
-    printf '%s\n' "$node_path"
-    return 0
-  fi
-
-  if [ ! -f "$archive_path" ]; then
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL "$url" -o "$temp_path"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$temp_path" "$url"
+  else
+    printf 'curl or wget is required to download Node on first launch.\n' >&2
     return 1
   fi
 
+  mv "$temp_path" "$destination"
+}
+
+verify_archive_checksum() {
+  archive_path=$1
+  archive_name=$2
+  shasums_path="$DOWNLOADS_DIR/SHASUMS256.txt"
+
+  if [ ! -f "$shasums_path" ]; then
+    download_file "$NODE_DIST_BASE_URL/SHASUMS256.txt" "$shasums_path"
+  fi
+
+  expected=$(grep " $archive_name\$" "$shasums_path" | awk '{print $1}' | head -n 1)
+  if [ -z "$expected" ]; then
+    printf 'Checksum entry for %s was not found.\n' "$archive_name" >&2
+    return 1
+  fi
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$archive_path" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    actual=$(shasum -a 256 "$archive_path" | awk '{print $1}')
+  else
+    printf 'sha256sum or shasum is required to verify Node download.\n' >&2
+    return 1
+  fi
+
+  [ "$expected" = "$actual" ]
+}
+
+find_cached_node_runtime() {
+  runtime_key=$(detect_runtime_key)
+  target_dir="$RUNTIME_DIR/$runtime_key"
+
+  if node_path=$(find_node_under "$target_dir"); then
+    if node_is_compatible "$node_path"; then
+      printf '%s\n' "$node_path"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+ensure_bundled_node() {
+  runtime_key=$(detect_runtime_key)
+  target_dir="$RUNTIME_DIR/$runtime_key"
+  archive_name="node-v$NODE_VERSION-$runtime_key.tar.gz"
+  archive_path="$DOWNLOADS_DIR/$archive_name"
+
+  if [ ! -f "$archive_path" ]; then
+    mkdir -p "$DOWNLOADS_DIR"
+    download_url="$NODE_DIST_BASE_URL/$archive_name"
+    printf 'Downloading Node runtime from %s\n' "$download_url" >&2
+    if ! download_file "$download_url" "$archive_path"; then
+      rm -f "$archive_path"
+      return 1
+    fi
+  fi
+
+  if ! verify_archive_checksum "$archive_path" "$archive_name"; then
+    rm -f "$archive_path"
+    printf 'Downloaded Node runtime checksum did not match %s. Please retry.\n' "$archive_name" >&2
+    return 1
+  fi
+
+  rm -rf "$target_dir"
   mkdir -p "$target_dir"
   tar -xzf "$archive_path" -C "$target_dir"
 
   if node_path=$(find_node_under "$target_dir"); then
-    printf '%s\n' "$node_path"
-    return 0
+    if node_is_compatible "$node_path"; then
+      printf '%s\n' "$node_path"
+      return 0
+    fi
   fi
 
   printf 'Failed to locate node after extracting %s\n' "$archive_path" >&2
   exit 1
 }
 
+node_is_compatible() {
+  node_path=$1
+  [ -x "$node_path" ] || return 1
+  version=$("$node_path" --version 2>/dev/null || true)
+  major=$(printf '%s' "$version" | sed 's/^v//' | cut -d. -f1)
+  [ "${major:-0}" -ge 24 ] 2>/dev/null
+}
+
 resolve_node() {
+  if command -v node >/dev/null 2>&1 && node_is_compatible "$(command -v node)"; then
+    command -v node
+    return
+  fi
+
+  if node_path=$(find_cached_node_runtime); then
+    printf '%s\n' "$node_path"
+    return
+  fi
+
   if node_path=$(ensure_bundled_node); then
     printf '%s\n' "$node_path"
     return
   fi
 
-  if command -v node >/dev/null 2>&1; then
-    command -v node
-    return
-  fi
-
-  printf '%s\n' "Node runtime not found. Put the official Node package in runtime/packages, or make node available on PATH." >&2
+  printf '%s\n' "Node runtime not found. Connect to the internet for first launch, or install Node.js 24+ and make node available on PATH." >&2
   exit 1
 }
 
@@ -139,7 +223,7 @@ open_browser() {
 
 NODE_EXE=$(resolve_node)
 mkdir -p "$DATA_DIR"
-mkdir -p "$PACKAGES_DIR"
+mkdir -p "$DOWNLOADS_DIR"
 
 if ! is_alive || ! is_healthy; then
   NODE_NO_WARNINGS=1 PORT="$PORT" "$NODE_EXE" "$SERVER_SCRIPT" > "$DATA_DIR/server.out.log" 2> "$DATA_DIR/server.err.log" &
